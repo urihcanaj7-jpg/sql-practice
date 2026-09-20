@@ -10,7 +10,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/alasql/4.6.6/alasql.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-auth-compat.js"></script>
+<script src="js/auth.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/alasql@4.17.3/dist/alasql.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
@@ -91,6 +94,37 @@
   }
   .brand-name{ font-family:var(--font-head); font-weight:600; font-size:17px; letter-spacing:0.01em; }
   .brand-sub{ color:var(--text-faint); font-size:12px; font-family:var(--font-code); }
+  body.auth-pending{ visibility:hidden; }
+  .auth-user{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    min-width:0;
+  }
+  .auth-user-email{
+    max-width:220px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    color:var(--text-dim);
+    font-family:var(--font-code);
+    font-size:11.5px;
+  }
+  .logout-btn{
+    background:none;
+    border:1px solid var(--line);
+    color:var(--text-dim);
+    border-radius:8px;
+    padding:7px 10px;
+    cursor:pointer;
+    font-family:var(--font-body);
+    font-size:12px;
+  }
+  .logout-btn:hover{ border-color:var(--err); color:var(--text); }
+  @media (max-width:700px){
+    .auth-user-email{ display:none; }
+  }
+
   .topbar-right{ display:flex; align-items:center; gap:14px; }
   .score-pill{
     font-family:var(--font-code); font-size:12.5px; color:var(--text-dim);
@@ -372,20 +406,64 @@
   .feedback .fmark{ font-family:var(--font-code); font-weight:600; }
 
   .results-body{ padding:12px 14px 16px; }
-  .results-scroll{ overflow:auto; max-height:260px; border:1px solid var(--line-soft); border-radius:8px; }
+  .results-scroll{
+    overflow:auto;
+    max-height:260px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    background:var(--panel);
+  }
+
   table.result-table{
     width:100%;
     border-collapse:collapse;
-    font-family:var(--font-code);
-    font-size:12.5px;
+    border-spacing:0;
+    font-family:var(--font-body);
+    font-size:13px;
     min-width:420px;
+    background:var(--panel);
   }
+
   table.result-table th{
-    text-align:left; padding:8px 12px; background:var(--panel-raised); color:var(--text-dim);
-    border-bottom:1px solid var(--line); position:sticky; top:0; white-space:nowrap;
+    text-align:left;
+    padding:9px 12px;
+    background:var(--panel-raised);
+    color:var(--text);
+    font-family:var(--font-body);
+    font-size:12.5px;
+    font-weight:600;
+    border-right:1px solid var(--line);
+    border-bottom:1px solid var(--line);
+    position:sticky;
+    top:0;
+    white-space:nowrap;
   }
-  table.result-table td{ padding:7px 12px; border-bottom:1px solid var(--line-soft); white-space:nowrap; }
-  table.result-table tr:last-child td{ border-bottom:none; }
+
+  table.result-table th:last-child{
+    border-right:none;
+  }
+
+  table.result-table td{
+    padding:8px 12px;
+    color:var(--text);
+    font-family:var(--font-body);
+    font-size:13px;
+    border-right:1px solid var(--line-soft);
+    border-bottom:1px solid var(--line-soft);
+    white-space:nowrap;
+  }
+
+  table.result-table td:last-child{
+    border-right:none;
+  }
+
+  table.result-table tbody tr:hover{
+    background:var(--panel-raised);
+  }
+
+  table.result-table tbody tr:last-child td{
+    border-bottom:none;
+  }
   .empty-note{ color:var(--text-faint); font-size:12.5px; padding:6px 2px; font-family:var(--font-code); }
   .row-count{ color:var(--text-faint); font-size:11.5px; font-family:var(--font-code); margin-top:8px; }
 
@@ -486,7 +564,7 @@
 
 </style>
 </head>
-<body>
+<body class="auth-pending">
 
 <div class="topbar">
   <div class="brand">
@@ -498,6 +576,10 @@
   </div>
   <div class="topbar-right">
     <div class="score-pill">Solved <b id="score-count">0</b>/<span id="score-total">0</span></div>
+    <div class="auth-user">
+      <span class="auth-user-email" id="auth-user-email" title=""></span>
+      <button class="logout-btn" id="logout-btn" type="button">Log out</button>
+    </div>
     <button class="icon-btn" id="theme-toggle" title="Toggle light/dark" aria-label="Toggle theme">◐</button>
     <button class="icon-btn" id="reset-progress" title="Reset progress" aria-label="Reset progress">↺</button>
   </div>
@@ -596,13 +678,26 @@
       <button class="btn btn-ghost" id="next-btn">Next →</button>
     </div>
 
-    <footer class="credits"><span id="footer-count">17</span> questions · <span id="db-status">database ready</span> · data resets before every run · progress is saved in this browser only</footer>
+    <footer class="credits"><span id="footer-count">17</span> questions · <span id="db-status">database ready</span> · data resets before every run · progress is saved in this browser</footer>
   </main>
 </div>
 
 <script>
 (function(){
   "use strict";
+
+  /* ============ AUTH UI ============ */
+  function renderAuthUser(user){
+    var userEl = document.getElementById("auth-user-email");
+    if (!userEl || !user) return;
+    var label = user.displayName || user.email || "Signed in";
+    userEl.textContent = label;
+    userEl.title = user.email || label;
+  }
+
+  if (window.QueryBenchAuth && window.QueryBenchAuth.currentUser){
+    renderAuthUser(window.QueryBenchAuth.currentUser);
+  }
 
   /* ============ DATABASE ============ */
   var SCHEMA = {
@@ -973,14 +1068,26 @@
 
   function renderTableHTML(rows, capNote){
     if (!rows || !rows.length) return '<div class="empty-note">no rows</div>';
+
     var cols = Object.keys(rows[0]);
-    var html = "<table><thead><tr>" + cols.map(function(c){return "<th>"+escapeHtml(c)+"</th>";}).join("") + "</tr></thead><tbody>";
+
+    var html =
+      "<table class=\"result-table\">" +
+      "<thead><tr>" +
+      cols.map(function(c){
+        return "<th>" + escapeHtml(c) + "</th>";
+      }).join("") +
+      "</tr></thead><tbody>";
+
     rows.forEach(function(r){
-      html += "<tr>" + cols.map(function(c){
-        var value = (r[c]===null || r[c]===undefined) ? "∅" : r[c];
-        return "<td>" + escapeHtml(value) + "</td>";
-      }).join("") + "</tr>";
+      html += "<tr>" +
+        cols.map(function(c){
+          var value = (r[c]===null || r[c]===undefined) ? "∅" : r[c];
+          return "<td>" + escapeHtml(value) + "</td>";
+        }).join("") +
+        "</tr>";
     });
+
     html += "</tbody></table>";
     return html;
   }
@@ -1214,6 +1321,13 @@
       }
     });
   }
+
+  document.getElementById("logout-btn").addEventListener("click", function(){
+    if (!window.QueryBenchAuth) return;
+    window.QueryBenchAuth.signOut().catch(function(err){
+      alert("Unable to log out: " + (err && err.message ? err.message : String(err)));
+    });
+  });
 
   document.getElementById("reset-progress").addEventListener("click", function(){
     if (!confirm("Reset all solved progress in this browser?")) return;
