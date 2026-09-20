@@ -8,14 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/alasql/4.6.6/alasql.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
 <script src="js/database.js"></script>
 <script src="questions/fundamentals/select-basics.js"></script>
 <script src="js/question-bank.js"></script>
@@ -392,98 +385,6 @@
   .nav-row{ display:flex; justify-content:space-between; margin-top:22px; gap:10px; }
 
   footer.credits{ text-align:center; color:var(--text-faint); font-size:11.5px; font-family:var(--font-code); padding:24px 0 10px; }
-
-  /* ---------- Professional SQL editor ---------- */
-  .CodeMirror{
-    height:310px;
-    border:1px solid var(--line);
-    border-radius:8px;
-    background:#0B1220;
-    color:#E4E9F2;
-    font-family:var(--font-code);
-    font-size:13.5px;
-    line-height:1.65;
-  }
-  .CodeMirror-focused{
-    border-color:var(--fk);
-    box-shadow:0 0 0 3px color-mix(in srgb, var(--fk) 15%, transparent);
-  }
-  .CodeMirror-gutters{
-    background:#0B1220;
-    border-right:1px solid var(--line-soft);
-  }
-  .CodeMirror-linenumber{ color:#52617A; }
-  .CodeMirror-cursor{ border-left:2px solid #E4E9F2; }
-  .CodeMirror-activeline-background{ background:rgba(91,141,239,.07); }
-  .cm-s-material-darker .cm-keyword{ color:#C792EA; }
-  .cm-s-material-darker .cm-builtin{ color:#82AAFF; }
-  .cm-s-material-darker .cm-variable,
-  .cm-s-material-darker .cm-variable-2{ color:#E4E9F2; }
-  .cm-s-material-darker .cm-variable-3{ color:#F78C6C; }
-  .cm-s-material-darker .cm-string{ color:#C3E88D; }
-  .cm-s-material-darker .cm-number{ color:#F78C6C; }
-  .cm-s-material-darker .cm-comment{ color:#66758F; }
-  .cm-s-material-darker .cm-operator{ color:#89DDFF; }
-  .cm-s-material-darker .cm-atom{ color:#FFCB6B; }
-  .CodeMirror-matchingbracket{
-    color:#0B1220 !important;
-    background:#4ADE80;
-    outline:none;
-    border-radius:2px;
-  }
-  .sql-editor-help{
-    display:flex;
-    gap:8px;
-    flex-wrap:wrap;
-    margin-top:9px;
-    color:var(--text-faint);
-    font-family:var(--font-code);
-    font-size:11px;
-  }
-  .sql-editor-help span{
-    border:1px solid var(--line);
-    border-radius:4px;
-    padding:2px 6px;
-    background:var(--panel-raised);
-  }
-  .sql-error{
-    margin:12px 14px 14px;
-    border:1px solid color-mix(in srgb, var(--err) 55%, var(--line));
-    border-radius:8px;
-    background:color-mix(in srgb, var(--err-dim) 82%, var(--panel));
-    overflow:hidden;
-  }
-  .sql-error-head{
-    display:flex;
-    align-items:center;
-    gap:8px;
-    padding:9px 12px;
-    border-bottom:1px solid color-mix(in srgb, var(--err) 25%, var(--line));
-    color:var(--err);
-    font-family:var(--font-code);
-    font-size:12px;
-    font-weight:600;
-  }
-  .sql-error-body{
-    padding:10px 12px;
-    color:#FCA5A5;
-    font-family:var(--font-code);
-    font-size:12px;
-    line-height:1.55;
-    white-space:pre-wrap;
-    overflow:auto;
-  }
-  .result-status{
-    font-family:var(--font-code);
-    font-size:11px;
-    color:var(--text-faint);
-  }
-  .result-status.ok{ color:var(--ok); }
-  .result-status.err{ color:var(--err); }
-  @media (max-width:600px){
-    .CodeMirror{ height:240px; }
-  }
-
 </style>
 </head>
 <body>
@@ -535,12 +436,6 @@
         <div class="hint-box" id="hint-box"></div>
         <div class="editor-wrap">
           <textarea id="sql-input" spellcheck="false" placeholder="Write your SQL query here..."></textarea>
-          <div class="sql-editor-help">
-            <span>SQL syntax highlighting</span>
-            <span>Auto-close brackets</span>
-            <span>Bracket matching</span>
-            <span>Ctrl+Enter Run</span>
-          </div>
           <div class="editor-actions">
             <button class="btn btn-run" id="run-btn">Run query</button>
             <button class="btn btn-ghost" id="solution-btn">Show solution</button>
@@ -555,7 +450,7 @@
       <section class="panel result-panel">
         <div class="panel-head">
           <span class="panel-head-title">YOUR RESULT</span>
-          <span class="result-status" id="result-meta">Ready · 0 rows</span>
+          <span class="section-note" id="result-meta">Rows: 0</span>
         </div>
         <div class="results-body">
           <div id="results-target">
@@ -1026,57 +921,10 @@
     scoreTotal: document.getElementById("score-total")
   };
 
-  var sqlEditor = null;
-
-  function initSqlEditor(){
-    if (!window.CodeMirror) return;
-    var textarea = document.getElementById("sql-input");
-    sqlEditor = CodeMirror.fromTextArea(textarea, {
-      mode: "text/x-sql",
-      theme: "material-darker",
-      lineNumbers: true,
-      lineWrapping: true,
-      matchBrackets: true,
-      autoCloseBrackets: true,
-      styleActiveLine: true,
-      indentUnit: 2,
-      tabSize: 2,
-      indentWithTabs: false,
-      viewportMargin: Infinity,
-      extraKeys: {
-        "Ctrl-Enter": function(cm){ runQuery(); },
-        "Cmd-Enter": function(cm){ runQuery(); }
-      }
-    });
-    sqlEditor.setSize("100%", "310px");
-    sqlEditor.on("change", function(){
-      var qid = current;
-      draftBySlot[qid] = sqlEditor.getValue();
-    });
-  }
-
-  function getSqlValue(){
-    return sqlEditor ? sqlEditor.getValue() : document.getElementById("sql-input").value;
-  }
-
-  function setSqlValue(value){
-    if (sqlEditor){
-      sqlEditor.setValue(value || "");
-      sqlEditor.clearHistory();
-    } else {
-      document.getElementById("sql-input").value = value || "";
-    }
-  }
-
-  function focusSqlEditor(){
-    if (sqlEditor) sqlEditor.focus();
-    else document.getElementById("sql-input").focus();
-  }
-
   var draftBySlot = {};
 
   function goTo(id){
-    draftBySlot[current] = getSqlValue();
+    draftBySlot[current] = els.sqlInput.value;
     current = id;
     renderQuestion();
     renderSidebar();
@@ -1093,7 +941,7 @@
     els.prompt.textContent = q.prompt;
     renderExample(q);
 
-    setSqlValue(draftBySlot[current] !== undefined ? draftBySlot[current] : "");
+    els.sqlInput.value = draftBySlot[current] !== undefined ? draftBySlot[current] : "";
     els.hintBox.textContent = q.hint;
     els.hintBox.classList.remove("open");
     document.getElementById("toggle-hint").textContent = "hint";
@@ -1106,7 +954,7 @@
     els.feedback.classList.remove("open","ok","err");
     els.resultsTarget.innerHTML = '<div class="workspace-empty"><div class="empty-icon">▦</div><strong>Run your query to see results</strong><span>Your query output will appear here.</span></div>';
     var resultMeta = document.getElementById("result-meta");
-    if (resultMeta){ resultMeta.textContent = "Ready · 0 rows"; resultMeta.className = "result-status"; }
+    if (resultMeta) resultMeta.textContent = "Rows: 0";
 
     document.getElementById("prev-btn").disabled = current === 0;
     document.getElementById("next-btn").disabled = current === QUESTIONS.length - 1;
@@ -1121,13 +969,13 @@
   /* ============ RUN QUERY ============ */
   function runQuery(){
     var q = QUESTIONS[current];
-    var userSql = getSqlValue().trim();
+    var userSql = els.sqlInput.value.trim();
     els.feedback.classList.remove("open","ok","err");
 
     if (!userSql){
       els.resultsTarget.innerHTML = '<div class="workspace-empty"><div class="empty-icon">✎</div><strong>Write a query first</strong><span>Enter SQL in the editor and run it.</span></div>';
       var resultMeta = document.getElementById("result-meta");
-      if (resultMeta){ resultMeta.textContent = "Ready · 0 rows"; resultMeta.className = "result-status"; }
+      if (resultMeta) resultMeta.textContent = "Rows: 0";
       return;
     }
 
@@ -1136,23 +984,11 @@
     try {
       rows = alasql(userSql);
     } catch(err){
-      var rawError = err && err.message ? err.message : String(err);
-      var friendlyError = rawError
-        .replace(/^Error:\s*/i, "")
-        .replace(/\s+/g, " ")
-        .trim();
-      els.resultsTarget.innerHTML =
-        '<div class="sql-error">' +
-          '<div class="sql-error-head"><span>✕</span><span>SQL execution error</span></div>' +
-          '<div class="sql-error-body">' + escapeHtml(friendlyError) + '</div>' +
-        '</div>';
+      els.resultsTarget.innerHTML = '<div class="workspace-empty"><div class="empty-icon" style="color:var(--err);border-color:var(--err);">!</div><strong style="color:var(--err);">Query error</strong><span>' + escapeHtml(err.message || String(err)) + '</span></div>';
       var resultMeta = document.getElementById("result-meta");
-      if (resultMeta){
-        resultMeta.textContent = "Error";
-        resultMeta.className = "result-status err";
-      }
+      if (resultMeta) resultMeta.textContent = "Error";
       els.feedback.classList.add("open","err");
-      els.feedback.innerHTML = '<span class="fmark">✕</span> Query failed — fix the SQL and run it again.';
+      els.feedback.innerHTML = '<span class="fmark">✕</span> That query didn\'t run — check the error above.';
       return;
     }
 
@@ -1160,7 +996,7 @@
 
     els.resultsTarget.innerHTML = renderTableHTML(rows) + '<div class="row-count">' + rows.length + ' row' + (rows.length===1?"":"s") + '</div>';
     var resultMeta = document.getElementById("result-meta");
-    if (resultMeta){ resultMeta.textContent = "Success · " + rows.length + " row" + (rows.length===1?"":"s"); resultMeta.className = "result-status ok"; }
+    if (resultMeta) resultMeta.textContent = "Rows: " + rows.length;
 
     var expected = getExpected(q);
     var isCorrect = resultsMatch(rows, expected);
@@ -1187,7 +1023,7 @@
 
   /* ============ WIRE UP ============ */
   document.getElementById("run-btn").addEventListener("click", runQuery);
-  document.getElementById("clear-btn").addEventListener("click", function(){ setSqlValue(""); focusSqlEditor(); });
+  document.getElementById("clear-btn").addEventListener("click", function(){ els.sqlInput.value = ""; els.sqlInput.focus(); });
   document.getElementById("prev-btn").addEventListener("click", function(){ if (current>0) goTo(current-1); });
   document.getElementById("next-btn").addEventListener("click", function(){ if (current<QUESTIONS.length-1) goTo(current+1); });
 
@@ -1200,20 +1036,18 @@
     this.textContent = open ? "Hide solution" : "Show solution";
   });
 
-  if (!sqlEditor){
-    els.sqlInput.addEventListener("keydown", function(e){
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter"){
-        e.preventDefault();
-        runQuery();
-      }
-      if (e.key === "Tab"){
-        e.preventDefault();
-        var start = this.selectionStart, end = this.selectionEnd;
-        this.value = this.value.substring(0,start) + "  " + this.value.substring(end);
-        this.selectionStart = this.selectionEnd = start + 2;
-      }
-    });
-  }
+  els.sqlInput.addEventListener("keydown", function(e){
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter"){
+      e.preventDefault();
+      runQuery();
+    }
+    if (e.key === "Tab"){
+      e.preventDefault();
+      var start = this.selectionStart, end = this.selectionEnd;
+      this.value = this.value.substring(0,start) + "  " + this.value.substring(end);
+      this.selectionStart = this.selectionEnd = start + 2;
+    }
+  });
 
   document.getElementById("reset-progress").addEventListener("click", function(){
     if (!confirm("Reset all solved progress in this browser?")) return;
@@ -1255,7 +1089,6 @@
   }
   updateScore();
   renderSidebar();
-  initSqlEditor();
   renderQuestion();
 })();
 </script>
