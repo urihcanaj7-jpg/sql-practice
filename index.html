@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Query Bench — SQL Practice</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/alasql/4.6.6/alasql.min.js"></script>
+<style>
+  :root{
+    --ink:#0B1220;
+    --panel:#101A2B;
+    --panel-raised:#152037;
+    --line:#22304A;
+    --line-soft:#1A2438;
+    --text:#E4E9F2;
+    --text-dim:#8996AC;
+    --text-faint:#5E6C85;
+    --pk:#D4A657;
+    --fk:#5B8DEF;
+    --ok:#4ADE80;
+    --ok-dim:#1F3B2C;
+    --err:#F87171;
+    --err-dim:#3B1F22;
+    --font-head:'Space Grotesk', sans-serif;
+    --font-body:'IBM Plex Sans', sans-serif;
+    --font-code:'IBM Plex Mono', monospace;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  :root[data-theme="light"]{
+    --ink:#F4F6FA;
+    --panel:#FFFFFF;
+    --panel-raised:#FFFFFF;
+    --line:#DCE2ED;
+    --line-soft:#E7EBF2;
+    --text:#101A2B;
+    --text-dim:#4B5872;
+    --text-faint:#8996AC;
+    --ok-dim:#DDF4E4;
+    --err-dim:#FBE0E1;
+  }
+  html{scroll-padding-top:env(safe-area-inset-top,0px);}
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--ink);
+    color:var(--text);
+    font-family:var(--font-body);
+    background-image:
+      linear-gradient(var(--line-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+    background-size:28px 28px;
+    background-attachment:fixed;
+  }
+  ::selection{ background:var(--fk); color:#0B1220; }
+
+  a{color:var(--fk);}
+
+  /* ---------- Top bar ---------- */
+  .topbar{
+    position:sticky; top:0; z-index:20;
+    padding-top:calc(14px + env(safe-area-inset-top,0px));
+    display:flex; align-items:center; justify-content:space-between;
+    padding-left:20px; padding-right:20px; padding-bottom:14px;
+    background:color-mix(in srgb, var(--ink) 88%, transparent);
+    backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);
+  }
+  .brand{ display:flex; align-items:center; gap:10px; }
+  .brand-mark{
+    width:30px; height:30px; border-radius:6px;
+    background:linear-gradient(135deg, var(--pk), var(--fk));
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--font-code); font-weight:600; font-size:13px; color:#0B1220;
+  }
+  .brand-name{ font-family:var(--font-head); font-weight:600; font-size:17px; letter-spacing:0.01em; }
+  .brand-sub{ color:var(--text-faint); font-size:12px; font-family:var(--font-code); }
+  .topbar-right{ display:flex; align-items:center; gap:14px; }
+  .score-pill{
+    font-family:var(--font-code); font-size:12.5px; color:var(--text-dim);
+    border:1px solid var(--line); border-radius:20px; padding:6px 12px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .score-pill b{ color:var(--pk); font-weight:600; }
+  .icon-btn{
+    background:none; border:1px solid var(--line); color:var(--text-dim);
+    border-radius:8px; width:34px; height:34px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; font-size:15px;
+  }
+  .icon-btn:hover{ border-color:var(--fk); color:var(--text); }
+  .icon-btn:focus-visible, button:focus-visible, textarea:focus-visible, .qpill:focus-visible{
+    outline:2px solid var(--fk); outline-offset:2px;
+  }
+
+  /* ---------- Layout ---------- */
+  .shell{
+    display:grid;
+    grid-template-columns:270px 1fr;
+    max-width:1280px; margin:0 auto;
+    min-height:calc(100vh - 66px);
+  }
+  @media (max-width: 860px){
+    .shell{ grid-template-columns:1fr; }
+    .sidebar{ order:2; border-right:none; border-top:1px solid var(--line); }
+    .main{ order:1; }
+  }
+
+  /* ---------- Sidebar ---------- */
+  .sidebar{
+    border-right:1px solid var(--line);
+    padding:18px 14px 40px;
+  }
+  .sidebar-head{ padding:4px 6px 14px; }
+  .sidebar-title{ font-family:var(--font-head); font-size:13px; letter-spacing:0.02em; color:var(--text-dim); font-weight:600; }
+  .progress-track{
+    height:6px; border-radius:4px; background:var(--line-soft); margin-top:10px; overflow:hidden;
+  }
+  .progress-fill{ height:100%; background:linear-gradient(90deg, var(--pk), var(--fk)); border-radius:4px; transition:width .4s ease; }
+  .progress-label{ font-family:var(--font-code); font-size:11.5px; color:var(--text-faint); margin-top:6px; }
+
+  .topic-group{ margin-top:6px; }
+  .topic-header{
+    width:100%; background:none; border:none; color:var(--text);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 6px; cursor:pointer; font-family:var(--font-body); font-weight:500; font-size:13.5px;
+    border-radius:6px;
+  }
+  .topic-header:hover{ background:var(--panel-raised); }
+  .topic-header .count{ font-family:var(--font-code); font-size:11px; color:var(--text-faint); }
+  .topic-header .chevron{ transition:transform .2s ease; color:var(--text-faint); font-size:11px; margin-left:6px; }
+  .topic-header[aria-expanded="false"] .chevron{ transform:rotate(-90deg); }
+  .qlist{ display:flex; flex-direction:column; gap:2px; padding:2px 0 10px 6px; }
+  .qpill{
+    display:flex; align-items:center; gap:9px;
+    background:none; border:none; text-align:left; cursor:pointer;
+    padding:7px 8px; border-radius:6px; color:var(--text-dim); font-size:13px; font-family:var(--font-body);
+  }
+  .qpill:hover{ background:var(--panel-raised); color:var(--text); }
+  .qpill.active{ background:var(--panel-raised); color:var(--text); box-shadow:inset 2px 0 0 var(--fk); }
+  .qpill .dot{
+    width:15px; height:15px; border-radius:4px; border:1.5px solid var(--line); flex:none;
+    display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--ok);
+  }
+  .qpill.solved .dot{ background:var(--ok-dim); border-color:var(--ok); }
+
+  /* ---------- Main ---------- */
+  .main{ padding:22px 24px 60px; min-width:0; }
+  .q-meta{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
+  .badge{
+    font-family:var(--font-code); font-size:11px; padding:3px 9px; border-radius:20px;
+    border:1px solid var(--line); color:var(--text-dim);
+  }
+  .badge.diff-easy{ color:var(--ok); border-color:var(--ok); }
+  .badge.diff-medium{ color:var(--pk); border-color:var(--pk); }
+  .badge.diff-hard{ color:var(--err); border-color:var(--err); }
+  .q-counter{ color:var(--text-faint); font-family:var(--font-code); font-size:12px; }
+
+  .q-title{ font-family:var(--font-head); font-size:23px; font-weight:600; margin:6px 0 10px; line-height:1.3; }
+  .q-prompt{ color:var(--text-dim); font-size:14.5px; line-height:1.6; max-width:70ch; }
+
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    margin-top:18px; overflow:hidden;
+  }
+  .panel-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 14px; border-bottom:1px solid var(--line); background:var(--panel-raised);
+  }
+  .panel-head-title{ font-family:var(--font-code); font-size:12px; color:var(--text-dim); letter-spacing:0.02em; }
+  .link-btn{
+    background:none; border:none; color:var(--fk); font-family:var(--font-code); font-size:12px; cursor:pointer; padding:2px 4px;
+  }
+  .link-btn:hover{ text-decoration:underline; }
+
+  .example-body{ padding:14px; display:flex; flex-direction:column; gap:16px; }
+  .example-label{ font-family:var(--font-code); font-size:12px; color:var(--text-faint); margin-bottom:8px; }
+  .input-table-block{ margin-bottom:10px; }
+  .input-table-block:last-child{ margin-bottom:0; }
+  .input-table-name{ font-family:var(--font-code); font-size:11.5px; color:var(--pk); margin-bottom:5px; }
+
+  .schema-body{ display:none; padding:12px 14px 14px; flex-wrap:wrap; gap:12px; }
+  .schema-body.open{ display:flex; }
+  .table-card{
+    border:1px solid var(--line); border-radius:8px; min-width:180px; flex:1 1 180px; overflow:hidden;
+  }
+  .table-card-head{
+    padding:7px 10px; font-family:var(--font-code); font-size:12.5px; font-weight:600;
+    background:var(--panel-raised); display:flex; align-items:center; justify-content:space-between; cursor:pointer;
+  }
+  .table-card-head:hover{ color:var(--fk); }
+  .table-cols{ padding:8px 10px 10px; font-family:var(--font-code); font-size:12px; color:var(--text-dim); }
+  .table-cols div{ display:flex; justify-content:space-between; padding:2px 0; }
+  .table-cols .col-name.key{ color:var(--pk); }
+  .table-cols .col-name.fkey{ color:var(--fk); }
+  .table-cols .col-type{ color:var(--text-faint); }
+  .sample-wrap{ padding:0 10px 10px; }
+  .sample-wrap table{ width:100%; border-collapse:collapse; font-size:11px; }
+  .sample-wrap th,.sample-wrap td{ padding:3px 6px; border-bottom:1px solid var(--line-soft); text-align:left; white-space:nowrap; }
+  .sample-wrap th{ color:var(--text-faint); font-weight:500; }
+
+  .editor-wrap{ padding:14px; }
+  textarea#sql-input{
+    width:100%; min-height:130px; resize:vertical;
+    background:var(--ink); color:var(--text); border:1px solid var(--line); border-radius:8px;
+    font-family:var(--font-code); font-size:13.5px; line-height:1.55; padding:12px 14px;
+    tab-size:2;
+  }
+  :root[data-theme="light"] textarea#sql-input{ background:#F7F9FC; }
+
+  .editor-actions{ display:flex; align-items:center; gap:10px; margin-top:12px; flex-wrap:wrap; }
+  .btn{
+    font-family:var(--font-body); font-weight:500; font-size:13.5px; padding:9px 16px; border-radius:7px;
+    border:1px solid transparent; cursor:pointer;
+  }
+  .btn-run{ background:var(--pk); color:#1A1204; }
+  .btn-run:hover{ filter:brightness(1.08); }
+  .btn-ghost{ background:none; border-color:var(--line); color:var(--text-dim); }
+  .btn-ghost:hover{ border-color:var(--fk); color:var(--text); }
+  .kbd-hint{ margin-left:auto; color:var(--text-faint); font-family:var(--font-code); font-size:11.5px; }
+  .kbd-hint kbd{ border:1px solid var(--line); border-radius:4px; padding:1px 5px; font-family:var(--font-code); }
+  @media (max-width:500px){ .kbd-hint{ display:none; } }
+
+  .hint-box, .solution-box{
+    margin:0 14px 14px; padding:10px 12px; border-radius:8px; font-size:13px; line-height:1.55;
+    font-family:var(--font-body); display:none;
+  }
+  .hint-box{ background:var(--panel-raised); color:var(--text-dim); border:1px dashed var(--line); }
+  .solution-box{ background:var(--panel-raised); border:1px solid var(--line); }
+  .solution-box pre{ margin:6px 0 0; font-family:var(--font-code); font-size:12.5px; color:var(--fk); white-space:pre-wrap; }
+  .hint-box.open, .solution-box.open{ display:block; }
+
+  .feedback{
+    margin:0 14px 14px; padding:11px 13px; border-radius:8px; font-size:13.5px; display:none;
+    align-items:center; gap:9px; font-family:var(--font-body);
+  }
+  .feedback.open{ display:flex; }
+  .feedback.ok{ background:var(--ok-dim); color:var(--ok); }
+  .feedback.err{ background:var(--err-dim); color:var(--err); }
+  .feedback .fmark{ font-family:var(--font-code); font-weight:600; }
+
+  .results-body{ padding:12px 14px 16px; }
+  .results-scroll{ overflow:auto; max-height:260px; border:1px solid var(--line-soft); border-radius:8px; }
+  table.result-table{ width:100%; border-collapse:collapse; font-family:var(--font-code); font-size:12.5px; min-width:340px; }
+  table.result-table th{
+    text-align:left; padding:8px 12px; background:var(--panel-raised); color:var(--text-dim);
+    border-bottom:1px solid var(--line); position:sticky; top:0; white-space:nowrap;
+  }
+  table.result-table td{ padding:7px 12px; border-bottom:1px solid var(--line-soft); white-space:nowrap; }
+  table.result-table tr:last-child td{ border-bottom:none; }
+  .empty-note{ color:var(--text-faint); font-size:12.5px; padding:6px 2px; font-family:var(--font-code); }
+  .row-count{ color:var(--text-faint); font-size:11.5px; font-family:var(--font-code); margin-top:8px; }
+
+  .nav-row{ display:flex; justify-content:space-between; margin-top:22px; gap:10px; }
+
+  footer.credits{ text-align:center; color:var(--text-faint); font-size:11.5px; font-family:var(--font-code); padding:24px 0 10px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">SQL</div>
+    <div>
+      <div class="brand-name">Query Bench</div>
+      <div class="brand-sub">practice SQL against a live in-browser database</div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <div class="score-pill">Solved <b id="score-count">0</b>/<span id="score-total">0</span></div>
+    <button class="icon-btn" id="theme-toggle" title="Toggle light/dark" aria-label="Toggle theme">◐</button>
+    <button class="icon-btn" id="reset-progress" title="Reset progress" aria-label="Reset progress">↺</button>
+  </div>
+</div>
+
+<div class="shell">
+  <nav class="sidebar" id="sidebar" aria-label="Question list"></nav>
+
+  <main class="main">
+    <div class="q-meta">
+      <span class="badge" id="badge-topic">Topic</span>
+      <span class="badge" id="badge-diff">Difficulty</span>
+      <span class="q-counter" id="q-counter">Question 1 of 17</span>
+    </div>
+    <h1 class="q-title" id="q-title">Loading…</h1>
+    <p class="q-prompt" id="q-prompt"></p>
+
+    <section class="panel">
+      <div class="panel-head">
+        <span class="panel-head-title">EXAMPLE</span>
+      </div>
+      <div class="example-body">
+        <div>
+          <div class="example-label">Input</div>
+          <div id="example-input-tables"></div>
+        </div>
+        <div>
+          <div class="example-label">Expected output</div>
+          <div id="example-output-table"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <span class="panel-head-title">DATABASE SCHEMA</span>
+        <button class="link-btn" id="toggle-schema">show tables</button>
+      </div>
+      <div class="schema-body" id="schema-body"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <span class="panel-head-title">SQL EDITOR</span>
+        <button class="link-btn" id="toggle-hint">hint</button>
+      </div>
+      <div class="hint-box" id="hint-box"></div>
+      <div class="editor-wrap">
+        <textarea id="sql-input" spellcheck="false" placeholder="SELECT ..."></textarea>
+        <div class="editor-actions">
+          <button class="btn btn-run" id="run-btn">Run query</button>
+          <button class="btn btn-ghost" id="solution-btn">Show solution</button>
+          <button class="btn btn-ghost" id="clear-btn">Clear</button>
+          <span class="kbd-hint"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> to run</span>
+        </div>
+      </div>
+      <div class="solution-box" id="solution-box"></div>
+      <div class="feedback" id="feedback"></div>
+      <div class="results-body">
+        <div class="panel-head-title" style="margin-bottom:8px;">RESULT</div>
+        <div id="results-target"></div>
+      </div>
+    </section>
+
+    <div class="nav-row">
+      <button class="btn btn-ghost" id="prev-btn">← Previous</button>
+      <button class="btn btn-ghost" id="next-btn">Next →</button>
+    </div>
+
+    <footer class="credits"><span id="footer-count">17</span> questions · <span id="db-status">database ready</span> · data resets before every run · progress is saved in this browser only</footer>
+  </main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============ DATABASE ============ */
+  var SCHEMA = {
+    customers: { pk:"customer_id", fks:[], cols:[["customer_id","INT"],["name","STRING"],["city","STRING"],["segment","STRING"],["signup_date","DATE"]] },
+    products:  { pk:"product_id", fks:[], cols:[["product_id","INT"],["name","STRING"],["category","STRING"],["price","NUMBER"]] },
+    orders:    { pk:"order_id", fks:["customer_id"], cols:[["order_id","INT"],["customer_id","INT"],["order_date","DATE"],["status","STRING"]] },
+    order_items:{ pk:"order_item_id", fks:["order_id","product_id"], cols:[["order_item_id","INT"],["order_id","INT"],["product_id","INT"],["quantity","INT"]] }
+  };
+
+  function buildDatabase(){
+    // Rebuild a clean in-browser AlaSQL database before every query/example.
+    // Rows are inserted one at a time with explicit parameters. This avoids
+    // the VALUES ? form behaving inconsistently across AlaSQL/browser builds.
+    alasql("DROP TABLE IF EXISTS customers");
+    alasql("DROP TABLE IF EXISTS products");
+    alasql("DROP TABLE IF EXISTS orders");
+    alasql("DROP TABLE IF EXISTS order_items");
+
+    alasql("CREATE TABLE customers (customer_id INT, name STRING, city STRING, segment STRING, signup_date STRING)");
+    alasql("CREATE TABLE products (product_id INT, name STRING, category STRING, price NUMBER)");
+    alasql("CREATE TABLE orders (order_id INT, customer_id INT, order_date STRING, status STRING)");
+    alasql("CREATE TABLE order_items (order_item_id INT, order_id INT, product_id INT, quantity INT)");
+
+    var customers = [
+      [1,'Ravi Sen','Kolkata','Retail','2022-01-14'],
+      [2,'Meera Iyer','Bengaluru','Retail','2022-02-03'],
+      [3,'Arjun Nair','Kolkata','Wholesale','2021-11-20'],
+      [4,'Priya Das','Mumbai','Retail','2023-03-11'],
+      [5,'Karan Mehta','Delhi','Wholesale','2022-07-08'],
+      [6,'Sara Khan','Mumbai','Retail','2023-01-25'],
+      [7,'Vikram Rao','Chennai','Wholesale','2021-09-02'],
+      [8,'Anita Roy','Kolkata','Retail','2022-12-19'],
+      [9,'Divya Pillai','Bengaluru','Retail','2023-05-30'],
+      [10,'Rohan Gupta','Delhi','Wholesale','2022-04-17'],
+      [11,'Neha Kapoor','Pune','Retail','2023-07-01']
+    ];
+
+    var products = [
+      [1,'Wireless Mouse','Electronics',799],
+      [2,'Mechanical Keyboard','Electronics',3499],
+      [3,'USB-C Hub','Electronics',1299],
+      [4,'Notebook Set','Stationery',249],
+      [5,'Gel Pen Pack','Stationery',99],
+      [6,'Desk Lamp','Home',1599],
+      [7,'Office Chair','Home',6999],
+      [8,'Water Bottle','Home',449],
+      [9,'Backpack','Accessories',1899],
+      [10,'Wireless Earbuds','Electronics',2299],
+      [11,'Sticky Notes','Stationery',79],
+      [12,'Monitor Stand','Home',899],
+      [13,'Desk Organizer','Home',349]
+    ];
+
+    var orders = [
+      [1,1,'2023-06-01','Delivered'],
+      [2,2,'2023-06-02','Delivered'],
+      [3,1,'2023-06-05','Delivered'],
+      [4,3,'2023-06-06','Pending'],
+      [5,4,'2023-06-07','Delivered'],
+      [6,5,'2023-06-08','Cancelled'],
+      [7,2,'2023-06-10','Delivered'],
+      [8,6,'2023-06-11','Delivered'],
+      [9,7,'2023-06-12','Pending'],
+      [10,8,'2023-06-13','Delivered'],
+      [11,3,'2023-06-15','Delivered'],
+      [12,9,'2023-06-16','Delivered'],
+      [13,10,'2023-06-17','Cancelled'],
+      [14,1,'2023-06-19','Delivered'],
+      [15,4,'2023-06-20','Pending'],
+      [16,6,'2023-06-21','Delivered'],
+      [17,5,'2023-06-22','Delivered'],
+      [18,8,'2023-06-24','Delivered'],
+      [19,2,'2023-06-25','Pending'],
+      [20,9,'2023-06-27','Delivered']
+    ];
+
+    var orderItems = [
+      [1,1,1,2],[2,1,4,1],[3,2,2,1],[4,3,5,3],[5,4,7,1],
+      [6,5,3,1],[7,5,6,2],[8,6,9,1],[9,7,10,1],[10,7,11,5],
+      [11,8,1,1],[12,9,7,1],[13,10,2,1],[14,10,8,2],[15,11,4,2],
+      [16,11,5,4],[17,12,12,1],[18,13,9,1],[19,14,3,2],[20,14,10,1],
+      [21,15,7,1],[22,16,1,3],[23,16,6,1],[24,17,8,3],[25,17,10,1],
+      [26,18,2,1],[27,18,4,1],[28,19,6,1],[29,20,12,2],[30,20,9,1]
+    ];
+
+    function insertRows(tableName, columnCount, rows){
+      var placeholders = Array(columnCount).fill("?").join(", ");
+      var statement = "INSERT INTO " + tableName + " VALUES (" + placeholders + ")";
+      rows.forEach(function(row){
+        alasql(statement, row);
+      });
+    }
+
+    insertRows("customers", 5, customers);
+    insertRows("products", 4, products);
+    insertRows("orders", 4, orders);
+    insertRows("order_items", 4, orderItems);
+  }
+
+  /* ============ QUESTIONS ============ */
+  var QUESTIONS = [
+    { topic:"SELECT basics", difficulty:"easy",
+      title:"Every customer, name and city",
+      prompt:"Write a SQL query to return the name and city of every customer.",
+      tables:["customers"],
+      solution:"SELECT name, city FROM customers",
+      hint:"You only need two columns — list them after SELECT, separated by a comma." },
+    { topic:"SELECT basics", difficulty:"easy",
+      title:"Electronics catalogue",
+      prompt:"Write a SQL query to return the name and price of every product in the 'Electronics' category.",
+      tables:["products"],
+      solution:"SELECT name, price FROM products WHERE category = 'Electronics'",
+      hint:"Filter the products table on the category column." },
+    { topic:"SELECT basics", difficulty:"easy",
+      title:"Where do customers live?",
+      prompt:"Write a SQL query to return the distinct cities that customers are based in, so each city appears once.",
+      tables:["customers"],
+      solution:"SELECT DISTINCT city FROM customers",
+      hint:"DISTINCT removes duplicate values from the result." },
+
+    { topic:"WHERE & filtering", difficulty:"easy",
+      title:"Pricier than ₹1500",
+      prompt:"Write a SQL query to return the name and price of every product priced above 1500.",
+      tables:["products"],
+      solution:"SELECT name, price FROM products WHERE price > 1500",
+      hint:"Use a comparison operator on the price column." },
+    { topic:"WHERE & filtering", difficulty:"easy",
+      title:"Still pending",
+      prompt:"Write a SQL query to return the order_id, customer_id and order_date of every order with status 'Pending'.",
+      tables:["orders"],
+      solution:"SELECT order_id, customer_id, order_date FROM orders WHERE status = 'Pending'",
+      hint:"Match the status column against the exact text 'Pending'." },
+    { topic:"WHERE & filtering", difficulty:"medium",
+      title:"Two cities",
+      prompt:"Write a SQL query to return the name and city of customers who live in either 'Kolkata' or 'Mumbai'.",
+      tables:["customers"],
+      solution:"SELECT name, city FROM customers WHERE city = 'Kolkata' OR city = 'Mumbai'",
+      hint:"You can combine two conditions with OR, or use IN ('Kolkata','Mumbai')." },
+
+    { topic:"Aggregates", difficulty:"medium",
+      title:"Catalogue size",
+      prompt:"Write a SQL query to count how many products exist in total. Name the result column total_products.",
+      tables:["products"],
+      solution:"SELECT COUNT(*) AS total_products FROM products",
+      hint:"COUNT(*) counts every row in the table." },
+    { topic:"Aggregates", difficulty:"medium",
+      title:"Average Home price",
+      prompt:"Write a SQL query to find the average price of products in the 'Home' category. Name the result column avg_price.",
+      tables:["products"],
+      solution:"SELECT AVG(price) AS avg_price FROM products WHERE category = 'Home'",
+      hint:"Filter first, then aggregate with AVG()." },
+    { topic:"Aggregates", difficulty:"medium",
+      title:"Most expensive product",
+      prompt:"Write a SQL query to find the name and price of the single most expensive product.",
+      tables:["products"],
+      solution:"SELECT name, price FROM products WHERE price = (SELECT MAX(price) FROM products)",
+      hint:"You can compare price to a subquery that computes MAX(price), or sort and limit to one row." },
+
+    { topic:"GROUP BY", difficulty:"medium",
+      title:"Products per category",
+      prompt:"Write a SQL query to count, for each category, how many products belong to it. Name the count column product_count.",
+      tables:["products"],
+      solution:"SELECT category, COUNT(*) AS product_count FROM products GROUP BY category",
+      hint:"GROUP BY category, then COUNT(*) inside each group." },
+    { topic:"GROUP BY", difficulty:"medium",
+      title:"Customers per city",
+      prompt:"Write a SQL query to count, for each city, how many customers live there. Name the count column customer_count.",
+      tables:["customers"],
+      solution:"SELECT city, COUNT(*) AS customer_count FROM customers GROUP BY city",
+      hint:"Same idea as grouping products, but on the customers table." },
+    { topic:"GROUP BY", difficulty:"hard",
+      title:"Bigger categories only",
+      prompt:"Write a SQL query to find categories that contain more than 3 products. Return the category and its product_count.",
+      tables:["products"],
+      solution:"SELECT category, COUNT(*) AS product_count FROM products GROUP BY category HAVING COUNT(*) > 3",
+      hint:"Filters on an aggregated value need HAVING, not WHERE." },
+
+    { topic:"JOINs", difficulty:"medium",
+      title:"Orders with customer names",
+      prompt:"Write a SQL query to return each order's order_id, order_date, and the name of the customer who placed it.",
+      tables:["orders","customers"],
+      solution:"SELECT o.order_id, o.order_date, c.name FROM orders o JOIN customers c ON o.customer_id = c.customer_id",
+      hint:"Join orders to customers on customer_id." },
+    { topic:"JOINs", difficulty:"medium",
+      title:"Items in order #7",
+      prompt:"Write a SQL query to return the product name and quantity for every item in order_id 7.",
+      tables:["order_items","products"],
+      solution:"SELECT p.name, oi.quantity FROM order_items oi JOIN products p ON oi.product_id = p.product_id WHERE oi.order_id = 7",
+      hint:"Join order_items to products on product_id, then filter by order_id." },
+    { topic:"JOINs", difficulty:"hard",
+      title:"Total units sold per product",
+      prompt:"Write a SQL query to find, for every product that has been ordered, the total quantity sold. Return the product name and total_quantity.",
+      tables:["order_items","products"],
+      solution:"SELECT p.name, SUM(oi.quantity) AS total_quantity FROM order_items oi JOIN products p ON oi.product_id = p.product_id GROUP BY p.name",
+      hint:"Join first, then GROUP BY product name and SUM the quantity." },
+
+    { topic:"Subqueries", difficulty:"hard",
+      title:"Customers with no orders",
+      prompt:"Write a SQL query to find the name of every customer who has never placed an order.",
+      tables:["customers","orders"],
+      solution:"SELECT name FROM customers WHERE customer_id NOT IN (SELECT customer_id FROM orders)",
+      hint:"Compare customer_id against a subquery of every customer_id that appears in orders, using NOT IN." },
+    { topic:"Subqueries", difficulty:"hard",
+      title:"Products never ordered",
+      prompt:"Write a SQL query to find the name of every product that has never appeared in an order.",
+      tables:["products","order_items"],
+      solution:"SELECT name FROM products WHERE product_id NOT IN (SELECT product_id FROM order_items)",
+      hint:"Same pattern as the previous question, applied to products and order_items." }
+  ];
+
+  /* ---- Interview questions section --------------------------------
+     Empty for now. Add objects with the same shape as above (topic is
+     set automatically) and they will appear as their own sidebar
+     section, fully wired into grading, progress and the Example panel. */
+  var INTERVIEW_QUESTIONS = [
+  ];
+  INTERVIEW_QUESTIONS.forEach(function(q){ q.topic = "Interview questions"; QUESTIONS.push(q); });
+
+  var TOPIC_ORDER = [];
+  QUESTIONS.forEach(function(q, i){
+    q.id = i;
+    if (TOPIC_ORDER.indexOf(q.topic) === -1) TOPIC_ORDER.push(q.topic);
+  });
+
+  var expectedCache = {};
+  function getExpected(q){
+    if (expectedCache[q.id]) return expectedCache[q.id];
+    buildDatabase();
+    var rows = alasql(q.solution);
+    expectedCache[q.id] = rows;
+    return rows;
+  }
+
+  /* ============ STATE / PROGRESS ============ */
+  var STORAGE_KEY = "querybench_progress_v1";
+  var THEME_KEY = "querybench_theme_v1";
+  var solved = {};
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) solved = JSON.parse(raw) || {};
+  } catch(e){ solved = {}; }
+
+  function saveProgress(){
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(solved)); } catch(e){}
+  }
+
+  var current = 0;
+  var collapsedTopics = {};
+
+  /* ============ RESULT COMPARISON ============ */
+  function normRow(row){
+    var vals = Object.keys(row).map(function(k){ return row[k]; });
+    return vals.map(function(v){
+      if (typeof v === "number") return "n:" + (Math.round(v * 10000) / 10000);
+      if (v === null || v === undefined) return "u:null";
+      return "s:" + String(v);
+    }).join(" | ");
+  }
+
+  function resultsMatch(a, b){
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    if (a.length !== b.length) return false;
+    var na = a.map(normRow).sort();
+    var nb = b.map(normRow).sort();
+    for (var i=0;i<na.length;i++) if (na[i] !== nb[i]) return false;
+    return true;
+  }
+
+  /* ============ RENDER: SIDEBAR ============ */
+  var sidebarEl = document.getElementById("sidebar");
+
+  function renderSidebar(){
+    sidebarEl.innerHTML = "";
+
+    var head = document.createElement("div");
+    head.className = "sidebar-head";
+    var solvedCount = Object.keys(solved).filter(function(k){return solved[k];}).length;
+    head.innerHTML =
+      '<div class="sidebar-title">Question set</div>' +
+      '<div class="progress-track"><div class="progress-fill" style="width:' + (100*solvedCount/QUESTIONS.length) + '%"></div></div>' +
+      '<div class="progress-label">' + solvedCount + ' / ' + QUESTIONS.length + ' solved</div>';
+    sidebarEl.appendChild(head);
+
+    TOPIC_ORDER.forEach(function(topic){
+      var qs = QUESTIONS.filter(function(q){ return q.topic === topic; });
+      var solvedInTopic = qs.filter(function(q){ return solved[q.id]; }).length;
+
+      var group = document.createElement("div");
+      group.className = "topic-group";
+
+      var expanded = collapsedTopics[topic] !== true;
+      var btn = document.createElement("button");
+      btn.className = "topic-header";
+      btn.setAttribute("aria-expanded", expanded ? "true" : "false");
+      btn.innerHTML = '<span>' + topic + '</span><span><span class="count">' + solvedInTopic + '/' + qs.length + '</span> <span class="chevron">▾</span></span>';
+      btn.addEventListener("click", function(){
+        collapsedTopics[topic] = expanded;
+        renderSidebar();
+      });
+      group.appendChild(btn);
+
+      if (expanded){
+        var list = document.createElement("div");
+        list.className = "qlist";
+        qs.forEach(function(q){
+          var pill = document.createElement("button");
+          pill.className = "qpill" + (solved[q.id] ? " solved" : "") + (q.id === current ? " active" : "");
+          pill.innerHTML = '<span class="dot">' + (solved[q.id] ? "✓" : "") + '</span><span>' + q.title + '</span>';
+          pill.addEventListener("click", function(){ goTo(q.id); });
+          list.appendChild(pill);
+        });
+        group.appendChild(list);
+      }
+      sidebarEl.appendChild(group);
+    });
+
+    if (INTERVIEW_QUESTIONS.length === 0){
+      var placeholder = document.createElement("div");
+      placeholder.className = "topic-group";
+      placeholder.innerHTML =
+        '<div class="topic-header" style="cursor:default;"><span>Interview questions</span></div>' +
+        '<div style="padding:0 8px 12px 8px;color:var(--text-faint);font-size:12px;font-family:var(--font-code);line-height:1.5;">Coming soon — hand-picked problems will show up here.</div>';
+      sidebarEl.appendChild(placeholder);
+    }
+  }
+
+  /* ============ RENDER: SCHEMA PANEL ============ */
+  var schemaBody = document.getElementById("schema-body");
+  var schemaBuilt = false;
+
+  function buildSchemaPanel(){
+    if (schemaBuilt) return;
+    schemaBuilt = true;
+    Object.keys(SCHEMA).forEach(function(tableName){
+      var t = SCHEMA[tableName];
+      var card = document.createElement("div");
+      card.className = "table-card";
+
+      var colsHtml = t.cols.map(function(c){
+        var cls = "col-name";
+        if (c[0] === t.pk) cls += " key";
+        else if (t.fks.indexOf(c[0]) !== -1) cls += " fkey";
+        return '<div><span class="' + cls + '">' + c[0] + '</span><span class="col-type">' + c[1] + '</span></div>';
+      }).join("");
+
+      card.innerHTML =
+        '<div class="table-card-head"><span>' + tableName + '</span><span style="color:var(--text-faint);font-weight:400;">preview</span></div>' +
+        '<div class="table-cols">' + colsHtml + '</div>' +
+        '<div class="sample-wrap" style="display:none;"></div>';
+
+      var headEl = card.querySelector(".table-card-head");
+      var sampleWrap = card.querySelector(".sample-wrap");
+      headEl.addEventListener("click", function(){
+        if (sampleWrap.style.display === "none"){
+          buildDatabase();
+          var rows = alasql("SELECT * FROM " + tableName + " LIMIT 5");
+          sampleWrap.innerHTML = renderTableHTML(rows, 5);
+          sampleWrap.style.display = "block";
+        } else {
+          sampleWrap.style.display = "none";
+        }
+      });
+
+      schemaBody.appendChild(card);
+    });
+  }
+
+  function renderTableHTML(rows, capNote){
+    if (!rows || !rows.length) return '<div class="empty-note">no rows</div>';
+    var cols = Object.keys(rows[0]);
+    var html = "<table><thead><tr>" + cols.map(function(c){return "<th>"+escapeHtml(c)+"</th>";}).join("") + "</tr></thead><tbody>";
+    rows.forEach(function(r){
+      html += "<tr>" + cols.map(function(c){
+        var value = (r[c]===null || r[c]===undefined) ? "∅" : r[c];
+        return "<td>" + escapeHtml(value) + "</td>";
+      }).join("") + "</tr>";
+    });
+    html += "</tbody></table>";
+    return html;
+  }
+
+  function renderExample(q){
+    buildDatabase();
+    var inputWrap = document.getElementById("example-input-tables");
+    inputWrap.innerHTML = "";
+    (q.tables || []).forEach(function(tableName){
+      var rows = alasql("SELECT * FROM " + tableName);
+      var block = document.createElement("div");
+      block.className = "input-table-block";
+      block.innerHTML =
+        '<div class="input-table-name">' + tableName + '</div>' +
+        '<div class="results-scroll">' + renderTableHTML(rows) + '</div>';
+      inputWrap.appendChild(block);
+    });
+
+    var expected = getExpected(q);
+    document.getElementById("example-output-table").innerHTML =
+      '<div class="results-scroll">' + renderTableHTML(expected) + '</div>';
+  }
+
+  document.getElementById("toggle-schema").addEventListener("click", function(){
+    buildSchemaPanel();
+    var open = schemaBody.classList.toggle("open");
+    this.textContent = open ? "hide tables" : "show tables";
+  });
+
+  /* ============ RENDER: QUESTION ============ */
+  var els = {
+    badgeTopic: document.getElementById("badge-topic"),
+    badgeDiff: document.getElementById("badge-diff"),
+    counter: document.getElementById("q-counter"),
+    title: document.getElementById("q-title"),
+    prompt: document.getElementById("q-prompt"),
+    sqlInput: document.getElementById("sql-input"),
+    hintBox: document.getElementById("hint-box"),
+    solutionBox: document.getElementById("solution-box"),
+    feedback: document.getElementById("feedback"),
+    resultsTarget: document.getElementById("results-target"),
+    scoreCount: document.getElementById("score-count"),
+    scoreTotal: document.getElementById("score-total")
+  };
+
+  var draftBySlot = {};
+
+  function goTo(id){
+    draftBySlot[current] = els.sqlInput.value;
+    current = id;
+    renderQuestion();
+    renderSidebar();
+    window.scrollTo({top:0, behavior:"smooth"});
+  }
+
+  function renderQuestion(){
+    var q = QUESTIONS[current];
+    els.badgeTopic.textContent = q.topic;
+    els.badgeDiff.textContent = q.difficulty;
+    els.badgeDiff.className = "badge diff-" + q.difficulty;
+    els.counter.textContent = "Question " + (current+1) + " of " + QUESTIONS.length;
+    els.title.textContent = q.title;
+    els.prompt.textContent = q.prompt;
+    renderExample(q);
+
+    els.sqlInput.value = draftBySlot[current] !== undefined ? draftBySlot[current] : "";
+    els.hintBox.textContent = q.hint;
+    els.hintBox.classList.remove("open");
+    document.getElementById("toggle-hint").textContent = "hint";
+
+    els.solutionBox.innerHTML = "<div style=\"color:var(--text-dim);font-size:12.5px;\">Reference solution — one valid way to answer this:</div><pre></pre>";
+    els.solutionBox.querySelector("pre").textContent = q.solution + ";";
+    els.solutionBox.classList.remove("open");
+    document.getElementById("solution-btn").textContent = "Show solution";
+
+    els.feedback.classList.remove("open","ok","err");
+    els.resultsTarget.innerHTML = '<div class="empty-note">Run your query to see results here.</div>';
+
+    document.getElementById("prev-btn").disabled = current === 0;
+    document.getElementById("next-btn").disabled = current === QUESTIONS.length - 1;
+  }
+
+  function updateScore(){
+    var count = Object.keys(solved).filter(function(k){return solved[k];}).length;
+    els.scoreCount.textContent = count;
+    els.scoreTotal.textContent = QUESTIONS.length;
+  }
+
+  /* ============ RUN QUERY ============ */
+  function runQuery(){
+    var q = QUESTIONS[current];
+    var userSql = els.sqlInput.value.trim();
+    els.feedback.classList.remove("open","ok","err");
+
+    if (!userSql){
+      els.resultsTarget.innerHTML = '<div class="empty-note">Write a query first.</div>';
+      return;
+    }
+
+    buildDatabase();
+    var rows;
+    try {
+      rows = alasql(userSql);
+    } catch(err){
+      els.resultsTarget.innerHTML = '<div class="empty-note" style="color:var(--err);">Error: ' + escapeHtml(err.message || String(err)) + '</div>';
+      els.feedback.classList.add("open","err");
+      els.feedback.innerHTML = '<span class="fmark">✕</span> That query didn\'t run — check the error above.';
+      return;
+    }
+
+    if (!Array.isArray(rows)) rows = [];
+
+    els.resultsTarget.innerHTML = renderTableHTML(rows) + '<div class="row-count">' + rows.length + ' row' + (rows.length===1?"":"s") + '</div>';
+
+    var expected = getExpected(q);
+    var isCorrect = resultsMatch(rows, expected);
+
+    els.feedback.classList.add("open", isCorrect ? "ok" : "err");
+    if (isCorrect){
+      els.feedback.innerHTML = '<span class="fmark">✓ Correct</span> — your result matches the expected output.';
+      if (!solved[q.id]){
+        solved[q.id] = true;
+        saveProgress();
+        renderSidebar();
+        updateScore();
+      }
+    } else {
+      els.feedback.innerHTML = '<span class="fmark">✕ Not quite</span> — your result has ' + rows.length + ' row' + (rows.length===1?"":"s") + ', expected ' + expected.length + '. Try again or check the hint.';
+    }
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];
+    });
+  }
+
+  /* ============ WIRE UP ============ */
+  document.getElementById("run-btn").addEventListener("click", runQuery);
+  document.getElementById("clear-btn").addEventListener("click", function(){ els.sqlInput.value = ""; els.sqlInput.focus(); });
+  document.getElementById("prev-btn").addEventListener("click", function(){ if (current>0) goTo(current-1); });
+  document.getElementById("next-btn").addEventListener("click", function(){ if (current<QUESTIONS.length-1) goTo(current+1); });
+
+  document.getElementById("toggle-hint").addEventListener("click", function(){
+    var open = els.hintBox.classList.toggle("open");
+    this.textContent = open ? "hide hint" : "hint";
+  });
+  document.getElementById("solution-btn").addEventListener("click", function(){
+    var open = els.solutionBox.classList.toggle("open");
+    this.textContent = open ? "Hide solution" : "Show solution";
+  });
+
+  els.sqlInput.addEventListener("keydown", function(e){
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter"){
+      e.preventDefault();
+      runQuery();
+    }
+    if (e.key === "Tab"){
+      e.preventDefault();
+      var start = this.selectionStart, end = this.selectionEnd;
+      this.value = this.value.substring(0,start) + "  " + this.value.substring(end);
+      this.selectionStart = this.selectionEnd = start + 2;
+    }
+  });
+
+  document.getElementById("reset-progress").addEventListener("click", function(){
+    if (!confirm("Reset all solved progress in this browser?")) return;
+    solved = {};
+    saveProgress();
+    renderSidebar();
+    updateScore();
+  });
+
+  document.getElementById("theme-toggle").addEventListener("click", function(){
+    var root = document.documentElement;
+    var current = root.getAttribute("data-theme");
+    var next = current === "light" ? "dark" : "light";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem(THEME_KEY, next); } catch(e){}
+  });
+  try {
+    var storedTheme = localStorage.getItem(THEME_KEY);
+    if (storedTheme) document.documentElement.setAttribute("data-theme", storedTheme);
+  } catch(e){}
+
+  /* ============ INIT ============ */
+  buildDatabase();
+  els.scoreTotal.textContent = QUESTIONS.length;
+  document.getElementById("footer-count").textContent = QUESTIONS.length;
+  try {
+    var dbCounts = [
+      alasql("SELECT COUNT(*) AS n FROM customers")[0].n,
+      alasql("SELECT COUNT(*) AS n FROM products")[0].n,
+      alasql("SELECT COUNT(*) AS n FROM orders")[0].n,
+      alasql("SELECT COUNT(*) AS n FROM order_items")[0].n
+    ];
+    document.getElementById("db-status").textContent =
+      "database ready · " + dbCounts.join(" / ") + " rows";
+  } catch(e) {
+    document.getElementById("db-status").textContent = "database error";
+  }
+  updateScore();
+  renderSidebar();
+  renderQuestion();
+})();
+</script>
+</body>
+</html>
