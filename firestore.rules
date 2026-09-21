@@ -1,0 +1,66 @@
+rules_version = '2';
+
+service cloud.firestore {
+
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(
+          /databases/$(database)/documents/admins/$(request.auth.uid)
+        )
+        && get(
+          /databases/$(database)/documents/admins/$(request.auth.uid)
+        ).data.active == true;
+    }
+
+    // ------------------------
+    // Admin records
+    // ------------------------
+    match /admins/{userId} {
+
+      // Admin can verify their own admin record.
+      allow read: if signedIn()
+        && request.auth.uid == userId;
+
+      // Admin records cannot be modified from the client.
+      allow write: if false;
+    }
+
+    // ------------------------
+    // Question bank
+    // ------------------------
+    match /questions/{questionId} {
+
+      // Students can read questions.
+      allow read: if true;
+
+      // Only admins can create/edit/delete.
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ------------------------
+    // Logical databases
+    // ------------------------
+    match /databases/{databaseId} {
+
+      allow read, create, update, delete: if isAdmin();
+    }
+
+    // ------------------------
+    // SQL tables
+    // ------------------------
+    match /tables/{tableId} {
+
+      // Students can read table definitions/data.
+      allow read: if true;
+
+      // Only admins can create/edit/delete tables.
+      allow create, update, delete: if isAdmin();
+    }
+  }
+}

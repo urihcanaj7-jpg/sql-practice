@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Query Bench — Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/alasql@4.17.3/dist/alasql.min.js"></script>
+<script src="js/auth.js"></script>
+<style>
+:root{--ink:#0B1220;--panel:#101A2B;--raised:#152037;--line:#22304A;--text:#E4E9F2;--dim:#8996AC;--faint:#5E6C85;--pk:#D4A657;--fk:#5B8DEF;--ok:#4ADE80;--err:#F87171;--font-head:'Space Grotesk',sans-serif;--font-body:'IBM Plex Sans',sans-serif;--font-code:'IBM Plex Mono',monospace}
+:root[data-theme="light"]{--ink:#F4F6FA;--panel:#FFF;--raised:#FFF;--line:#DCE2ED;--text:#101A2B;--dim:#4B5872;--faint:#8996AC}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--ink);color:var(--text);font-family:var(--font-body)}
+body{background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:28px 28px}
+.topbar{position:sticky;top:0;z-index:10;padding:14px 20px;background:color-mix(in srgb,var(--ink) 92%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:10px}.mark{width:30px;height:30px;border-radius:6px;background:linear-gradient(135deg,var(--pk),var(--fk));display:flex;align-items:center;justify-content:center;color:#0B1220;font:600 12px var(--font-code)}.name{font:600 17px var(--font-head)}.sub{font:11px var(--font-code);color:var(--faint)}
+.actions{display:flex;align-items:center;gap:8px}.btn{border:1px solid var(--line);background:none;color:var(--text);border-radius:7px;padding:8px 12px;cursor:pointer;font:500 12px var(--font-body)}.btn:hover{border-color:var(--fk)}.primary{background:var(--pk);border-color:var(--pk);color:#1A1204}.danger:hover{border-color:var(--err);color:var(--err)}
+.wrap{max-width:1700px;margin:0 auto;padding:24px}.notice{padding:10px 12px;border:1px solid var(--line);background:var(--panel);border-radius:8px;color:var(--dim);font:12px var(--font-code);margin-bottom:16px}.notice.ok{color:var(--ok)}.notice.err{color:var(--err)}
+.grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(340px,.85fr);gap:16px}.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}.head{padding:11px 14px;background:var(--raised);border-bottom:1px solid var(--line);font:600 12px var(--font-code);color:var(--dim)}.body{padding:16px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{margin-bottom:13px}.field label{display:block;color:var(--dim);font:11px var(--font-code);margin-bottom:6px}
+input,textarea,select{width:100%;background:var(--ink);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:9px 10px;font:13px var(--font-body)}input:focus,textarea:focus,select:focus{outline:none;border-color:var(--fk)}textarea{min-height:90px;resize:vertical}textarea.code{min-height:145px;font:12.5px/1.55 var(--font-code)}
+.help{color:var(--faint);font:11px/1.5 var(--font-code)}.form-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.list{max-height:720px;overflow:auto}.item{padding:12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:12px}.title{font-size:13px;font-weight:600}.meta{margin-top:4px;color:var(--faint);font:10.5px var(--font-code)}.item-actions{display:flex;gap:6px;align-items:flex-start}.empty{padding:20px;color:var(--faint);font:12px var(--font-code)}
+.check{display:flex;align-items:center;gap:7px;color:var(--dim);font:12px var(--font-body)}.check input{width:auto}
+
+.code-help{color:var(--faint);font:10.5px/1.5 var(--font-code);margin-top:5px}
+.expected-preview{margin-top:10px;border:1px solid var(--line);border-radius:7px;overflow:auto;background:var(--ink)}
+.expected-preview-head{padding:8px 10px;background:var(--raised);border-bottom:1px solid var(--line);color:var(--dim);font:10.5px var(--font-code)}
+.expected-preview table{width:100%;border-collapse:collapse;min-width:420px}
+.expected-preview th,.expected-preview td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;font:11px var(--font-code)}
+.expected-preview th{background:var(--raised);color:var(--text);font-weight:600}
+.expected-preview td{color:var(--dim)}
+.expected-preview tr:last-child td{border-bottom:0}
+.expected-preview .empty{padding:12px}
+.table-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,.8fr);gap:16px;margin-top:16px}
+.table-list{max-height:520px;overflow:auto}
+.table-item{padding:12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:12px}
+.table-name{font-size:13px;font-weight:600}
+.table-meta{margin-top:4px;color:var(--faint);font:10.5px var(--font-code)}
+
+.database-grid{display:grid;grid-template-columns:minmax(320px,.75fr) minmax(0,1.25fr);gap:16px;margin-top:16px}
+.database-list{max-height:360px;overflow:auto;border-top:1px solid var(--line)}
+.database-item{padding:12px;display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line)}
+.database-name{font-size:13px;font-weight:600}.database-meta{margin-top:4px;color:var(--faint);font:10.5px var(--font-code)}
+.table-picker{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;padding:10px;background:var(--ink);border:1px solid var(--line);border-radius:7px;min-height:48px}
+.table-option{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:7px;align-items:center;padding:8px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);cursor:pointer}
+.table-option:hover{border-color:var(--fk)}.table-option input{width:auto;grid-row:1 / span 2}.table-option span{font-size:12px;font-weight:600}.table-option small{color:var(--faint);font:9.5px var(--font-code)}
+.table-card{margin-top:16px}.table-group{border-bottom:1px solid var(--line)}.table-group:last-child{border-bottom:0}.table-group-head{padding:10px 14px;background:var(--raised);display:flex;justify-content:space-between;gap:10px;color:var(--dim);font:11px var(--font-code)}
+.table-group-head strong{color:var(--text);font-size:12px}.table-group-head span{color:var(--faint)}
+.sql-test-status{margin-top:10px;padding:8px 10px;border-radius:7px;font:11px/1.5 var(--font-code);display:none}.sql-test-status.ok{display:block;color:var(--ok);border:1px solid color-mix(in srgb,var(--ok) 35%,var(--line));background:color-mix(in srgb,var(--ok) 8%,var(--panel))}.sql-test-status.err{display:block;color:var(--err);border:1px solid color-mix(in srgb,var(--err) 35%,var(--line));background:color-mix(in srgb,var(--err) 8%,var(--panel))}
+@media(max-width:900px){.grid,.database-grid{grid-template-columns:1fr}}
+@media(max-width:600px){.table-picker{grid-template-columns:1fr}}
+@media(max-width:900px){.grid,.table-grid{grid-template-columns:1fr}}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}@media(max-width:600px){.row{grid-template-columns:1fr}.wrap{padding:16px}.sub{display:none}.item{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand"><div class="mark">SQL</div><div><div class="name">Query Bench · Admin</div><div class="sub">Manage SQL interview questions without editing code</div></div></div>
+  <div class="actions"><button class="btn" id="home-btn">← Practice</button><button class="btn danger" id="logout-btn">Log out</button></div>
+</div>
+<main class="wrap">
+  <div id="notice" class="notice">Checking authentication…</div>
+
+  <div class="grid">
+    <section class="card">
+      <div class="head">QUESTION EDITOR</div>
+      <div class="body">
+        <form id="question-form">
+          <div class="row">
+            <div class="field"><label>QUESTION TITLE</label><input id="title" required placeholder="Find duplicate employees"></div>
+            <div class="field"><label>TOPIC</label><input id="topic" required placeholder="Interview questions"></div>
+          </div>
+          <div class="row">
+            <div class="field"><label>DIFFICULTY</label><select id="difficulty"><option value="easy">easy</option><option value="medium" selected>medium</option><option value="hard">hard</option></select></div>
+            <div class="field"><label>DATABASE</label><select id="question-database" required></select></div>
+          </div>
+          <div class="field">
+            <label>TABLES USED</label>
+            <div id="question-tables" class="table-picker"><div class="empty">Select a database first.</div></div>
+            <div class="code-help">Select only the tables required for this question. These tables drive the student's Database Schema and Input Tables sections.</div>
+          </div>
+          <div class="field"><label>QUESTION / PROMPT</label><textarea id="prompt" required placeholder="Write the SQL problem here..."></textarea></div>
+          <div class="field"><label>HINT</label><textarea id="hint" placeholder="Optional hint"></textarea></div>
+          <div class="field"><label>REFERENCE SOLUTION</label><textarea id="solution" class="code" required placeholder="SELECT ..."></textarea></div>
+          <div class="field">
+            <label>EXPECTED OUTPUT (RESULT TABLE)</label>
+            <textarea id="expected-output" class="code" placeholder='[
+  {"salary": 85000}
+]'></textarea>
+            <div class="code-help">Enter the expected result as a JSON array of rows. Each object is one result row; object keys become output columns. The reference solution is only an example of a valid approach and does not have to be the same SQL a student writes.</div>
+            <div class="form-actions" style="margin-top:8px">
+              <button class="btn" type="button" id="preview-output-btn">Preview output table</button>
+              <button class="btn" type="button" id="format-output-btn">Format JSON</button>
+            </div>
+            <div id="expected-output-preview" class="expected-preview">
+              <div class="expected-preview-head">STUDENT-FACING EXPECTED OUTPUT PREVIEW</div>
+              <div class="empty">Enter JSON above and click “Preview output table”.</div>
+            </div>
+          </div>
+          <label class="check"><input type="checkbox" id="active" checked> Published / visible to students</label>
+          <div class="help" style="margin-top:8px">Students see the selected tables, input data and expected output. The reference solution is available through the existing Show solution control.</div>
+          <div class="form-actions"><button class="btn primary" type="submit" id="save-btn">Add question</button><button class="btn" type="button" id="clear-btn">Clear</button></div>
+        </form>
+      </div>
+    </section>
+    <section class="card">
+      <div class="head">QUESTIONS IN FIRESTORE</div>
+      <div id="question-list" class="list"><div class="empty">Loading…</div></div>
+    </section>
+  </div>
+
+  <div class="database-grid">
+    <section class="card">
+      <div class="head">DATABASES</div>
+      <div class="body">
+        <form id="database-form">
+          <div class="row">
+            <div class="field"><label>DATABASE NAME</label><input id="database-name" required placeholder="Interview SQL"></div>
+            <div class="field"><label>STATUS</label><label class="check" style="margin-top:9px"><input type="checkbox" id="database-active" checked> Available</label></div>
+          </div>
+          <div class="form-actions">
+            <button class="btn primary" type="submit" id="database-save-btn">Add database</button>
+            <button class="btn" type="button" id="database-clear-btn">Clear</button>
+          </div>
+        </form>
+      </div>
+      <div id="database-list" class="database-list"><div class="empty">Loading…</div></div>
+    </section>
+
+    <section class="card">
+      <div class="head">DATABASE TABLE EDITOR</div>
+      <div class="body">
+        <form id="table-form">
+          <div class="row">
+            <div class="field"><label>DATABASE</label><select id="table-database" required></select></div>
+            <div class="field"><label>TABLE NAME</label><input id="table-name" required placeholder="employees"></div>
+          </div>
+          <div class="field"><label>STATUS</label><label class="check"><input type="checkbox" id="table-active" checked> Available to students</label></div>
+          <div class="field">
+            <label>CREATE TABLE SQL</label>
+            <textarea id="table-create-sql" class="code" required placeholder="CREATE TABLE employees (
+  emp_id INT PRIMARY KEY,
+  employee_name VARCHAR(100),
+  salary DECIMAL(10,2)
+);"></textarea>
+            <div class="code-help">Paste the SQL CREATE TABLE statement exactly as you would write it in an interview.</div>
+          </div>
+          <div class="field">
+            <label>INSERT DATA SQL</label>
+            <textarea id="table-insert-sql" class="code" required placeholder="INSERT INTO employees (emp_id, employee_name, salary) VALUES
+(1, 'Asha', 75000),
+(2, 'Ravi', 82000),
+(3, 'Priya', 68000);"></textarea>
+            <div class="code-help">Paste one or more INSERT statements. This becomes the data students see in INPUT TABLES.</div>
+          </div>
+          <div id="table-sql-status" class="sql-test-status"></div>
+          <div class="form-actions">
+            <button class="btn" type="button" id="test-table-sql-btn">Test SQL</button>
+            <button class="btn primary" type="submit" id="table-save-btn">Add table</button>
+            <button class="btn" type="button" id="table-clear-btn">Clear</button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <section class="card table-card">
+    <div class="head">TABLES IN FIRESTORE · GROUPED BY DATABASE</div>
+    <div id="table-list" class="table-list"><div class="empty">Loading…</div></div>
+  </section>
+</main>
+<script>
+(function(){
+"use strict";
+var firebaseConfig={
+ apiKey:"AIzaSyA4OQcxwiOFY5HwtTBhzkQ93Hh1oLvQrAk",
+ authDomain:"sql-practice-12fcc.firebaseapp.com",
+ projectId:"sql-practice-12fcc",
+ storageBucket:"sql-practice-12fcc.firebasestorage.app",
+ messagingSenderId:"191666286963",
+ appId:"1:191666286963:web:df15c2d37f4f5901665506",
+ measurementId:"G-K1RM8KN8XD"
+};
+if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+var db=firebase.firestore(),auth=firebase.auth();
+var editingId=null,editingTableId=null,editingDatabaseId=null;
+var DATABASES=[],TABLES=[];
+function $(id){return document.getElementById(id);}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];});}
+function notice(msg,type){$("notice").textContent=msg;$("notice").className="notice "+(type||"");}
+function adminCheck(user){return db.collection("admins").doc(user.uid).get().then(function(s){return s.exists&&s.data().active===true;});}
+function parseJsonField(id,label){var raw=$(id).value.trim();if(!raw)return null;try{return JSON.parse(raw);}catch(e){notice(label+" contains invalid JSON.","err");throw e;}}
+function formatOutputValue(v){
+  if(v===null||v===undefined)return "NULL";
+  if(typeof v==="object")return JSON.stringify(v);
+  return String(v);
+}
+function renderExpectedPreview(){
+  var wrap=$("expected-output-preview"),raw=$("expected-output").value.trim();
+  if(!wrap)return;
+  if(!raw){
+    wrap.innerHTML='<div class="expected-preview-head">STUDENT-FACING EXPECTED OUTPUT PREVIEW</div><div class="empty">No expected output entered yet.</div>';
+    return;
+  }
+  var data;
+  try{data=JSON.parse(raw);}catch(e){
+    wrap.innerHTML='<div class="expected-preview-head">STUDENT-FACING EXPECTED OUTPUT PREVIEW</div><div class="empty">Invalid JSON — fix the expected output to preview it.</div>';
+    return;
+  }
+  if(!Array.isArray(data)){
+    wrap.innerHTML='<div class="expected-preview-head">STUDENT-FACING EXPECTED OUTPUT PREVIEW</div><div class="empty">Expected output must be a JSON array of rows.</div>';
+    return;
+  }
+  if(!data.length){
+    wrap.innerHTML='<div class="expected-preview-head">STUDENT-FACING EXPECTED OUTPUT PREVIEW</div><div class="empty">No rows.</div>';
+    return;
+  }
+  var cols=[];
+  data.forEach(function(row){
+    if(row&&typeof row==="object"&&!Array.isArray(row)){
+      Object.keys(row).forEach(function(k){if(cols.indexOf(k)===-1)cols.push(k);});
+    }
+  });
+  if(!cols.length){
+    wrap.innerHTML='<div class="expected-preview-head">STUDENT-FACING EXPECTED OUTPUT PREVIEW</div><div class="empty">Each row must be a JSON object, for example {"salary":85000}.</div>';
+    return;
+  }
+  var html='<div class="expected-preview-head">STUDENT-FACING EXPECTED OUTPUT PREVIEW · '+data.length+' row'+(data.length===1?'':'s')+'</div><table><thead><tr>';
+  cols.forEach(function(c){html+='<th>'+escapeHtml(c)+'</th>';});
+  html+='</tr></thead><tbody>';
+  data.forEach(function(row){
+    html+='<tr>';
+    cols.forEach(function(c){
+      var value=row&&Object.prototype.hasOwnProperty.call(row,c)?formatOutputValue(row[c]):"";
+      html+='<td>'+escapeHtml(value)+'</td>';
+    });
+    html+='</tr>';
+  });
+  html+='</tbody></table>';
+  wrap.innerHTML=html;
+}
+function clearForm(){editingId=null;$("question-form").reset();$("difficulty").value="medium";$("active").checked=true;$("save-btn").textContent="Add question";renderQuestionDatabaseOptions();renderExpectedPreview();}
+function clearTableForm(){editingTableId=null;$("table-form").reset();$("table-active").checked=true;$("table-save-btn").textContent="Add table";populateTableDatabaseOptions();setSqlStatus("","");}
+function clearDatabaseForm(){editingDatabaseId=null;$("database-form").reset();$("database-active").checked=true;$("database-save-btn").textContent="Add database";}
+function databaseById(id){return DATABASES.find(function(d){return d.id===id;})||null;}
+function tablesForDatabase(id){return TABLES.filter(function(t){return t.databaseId===id;});}
+function firstActiveDatabase(){return DATABASES.find(function(d){return d.active!==false;})||DATABASES[0]||null;}
+
+function ensureDefaultDatabase(){
+ return db.collection("databases").get().then(function(snap){
+   if(!snap.empty)return;
+   return db.collection("databases").add({name:"Main Database",active:true,createdAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+ });
+}
+function migrateOrphanTables(defaultDbId){
+ var orphans=TABLES.filter(function(t){return !t.databaseId;});
+ if(!orphans.length)return Promise.resolve();
+ return Promise.all(orphans.map(function(t){return db.collection("tables").doc(t.id).update({databaseId:defaultDbId,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});}));
+}
+function loadAll(){
+ return Promise.all([
+   db.collection("databases").get(),
+   db.collection("tables").get(),
+   db.collection("questions").get()
+ ]).then(function(parts){
+   DATABASES=[];parts[0].forEach(function(doc){var d=doc.data()||{};DATABASES.push({id:doc.id,name:d.name||doc.id,active:d.active!==false,createdAt:d.createdAt});});
+   TABLES=[];parts[1].forEach(function(doc){var d=doc.data()||{};TABLES.push({id:doc.id,name:d.name||doc.id,databaseId:d.databaseId||"",active:d.active!==false,columns:Array.isArray(d.columns)?d.columns:[],rows:Array.isArray(d.rows)?d.rows:[],data:d});});
+   if(!DATABASES.length){
+     return ensureDefaultDatabase().then(loadAll);
+   }
+   return migrateOrphanTables(firstActiveDatabase().id).then(function(){
+     if(TABLES.some(function(t){return !t.databaseId;}))return loadAll();
+     renderEverything(parts[2]);
+   });
+ });
+}
+function renderEverything(questionSnap){
+ renderDatabaseLists();
+ renderQuestionDatabaseOptions();
+ populateTableDatabaseOptions();
+ renderTableList();
+ renderQuestionList(questionSnap);
+}
+function renderDatabaseLists(){
+ var list=$("database-list");
+ if(!DATABASES.length){list.innerHTML='<div class="empty">No databases yet.</div>';return;}
+ list.innerHTML="";
+ DATABASES.forEach(function(d){
+   var count=tablesForDatabase(d.id).length,item=document.createElement("div");item.className="database-item";
+   item.innerHTML='<div><div class="database-name">'+escapeHtml(d.name)+'</div><div class="database-meta">'+count+' table'+(count===1?'':'s')+' · '+(d.active?'available':'disabled')+'</div></div><div class="item-actions"><button class="btn select-db-btn">Use</button><button class="btn edit-db-btn">Edit</button></div>';
+   item.querySelector(".select-db-btn").onclick=function(){selectDatabase(d.id);};
+   item.querySelector(".edit-db-btn").onclick=function(){fillDatabaseForm(d);};
+   list.appendChild(item);
+ });
+}
+function selectDatabase(id){
+ $("question-database").value=id;$("table-database").value=id;renderQuestionTables();
+}
+function renderQuestionDatabaseOptions(selected){
+ var sel=$("question-database"),current=selected||sel.value||(firstActiveDatabase()||{}).id||"";
+ sel.innerHTML=DATABASES.map(function(d){return '<option value="'+escapeHtml(d.id)+'" '+(d.active?'':'disabled')+'>'+escapeHtml(d.name)+(d.active?'':' (disabled)')+'</option>';}).join("");
+ if(current&&DATABASES.some(function(d){return d.id===current;}))sel.value=current;
+ renderQuestionTables();
+}
+function populateTableDatabaseOptions(selected){
+ var sel=$("table-database"),current=selected||sel.value||(firstActiveDatabase()||{}).id||"";
+ sel.innerHTML=DATABASES.filter(function(d){return d.active;}).map(function(d){return '<option value="'+escapeHtml(d.id)+'">'+escapeHtml(d.name)+'</option>';}).join("");
+ if(current&&DATABASES.some(function(d){return d.id===current&&d.active;}))sel.value=current;
+}
+function renderQuestionTables(checkedNames){
+ var id=$("question-database").value,wrap=$("question-tables"),tables=tablesForDatabase(id).filter(function(t){return t.active;});
+ if(!id||!tables.length){wrap.innerHTML='<div class="empty">No active tables in this database. Create a table below first.</div>';return;}
+ var selected=checkedNames||Array.from(wrap.querySelectorAll('input:checked')).map(function(x){return x.value;});
+ wrap.innerHTML="";
+ tables.forEach(function(t){
+   var label=document.createElement("label");label.className="table-option";
+   label.innerHTML='<input type="checkbox" value="'+escapeHtml(t.name)+'"> <span>'+escapeHtml(t.name)+'</span><small>'+t.columns.length+' cols · '+t.rows.length+' rows</small>';
+   var cb=label.querySelector("input");cb.checked=selected.indexOf(t.name)!==-1;wrap.appendChild(label);
+ });
+}
+$("question-database").onchange=function(){renderQuestionTables();};
+$("table-database").onchange=function(){};
+
+function renderQuestionList(snap){
+ var list=$("question-list"),rows=[];snap.forEach(function(doc){rows.push({id:doc.id,data:doc.data()||{}});});
+ rows.sort(function(a,b){return String(a.data.title||"").localeCompare(String(b.data.title||""));});
+ if(!rows.length){list.innerHTML='<div class="empty">No Admin questions yet. Add your first question.</div>';return;}
+ list.innerHTML="";
+ rows.forEach(function(row){var d=row.data,item=document.createElement("div");item.className="item";var dbName=(databaseById(d.databaseId)||{}).name||"Legacy / unassigned";
+  item.innerHTML='<div><div class="title">'+escapeHtml(d.title||"Untitled")+'</div><div class="meta">'+escapeHtml(d.topic||"Uncategorized")+' · '+escapeHtml(d.difficulty||"medium")+' · '+escapeHtml(dbName)+' · '+(d.active===false?"disabled":"published")+'</div></div><div class="item-actions"><button class="btn edit-btn">Edit</button><button class="btn danger toggle-btn">'+(d.active===false?"Publish":"Disable")+'</button></div>';
+  item.querySelector(".edit-btn").onclick=function(){fillQuestionForm(row.id,d);};
+  item.querySelector(".toggle-btn").onclick=function(){toggleQuestion(row.id,d.active!==false);};list.appendChild(item);
+ });
+}
+function fillQuestionForm(id,d){
+ editingId=id;$("title").value=d.title||"";$("topic").value=d.topic||"";$("difficulty").value=d.difficulty||"medium";
+ renderQuestionDatabaseOptions(d.databaseId||((firstActiveDatabase()||{}).id||""));
+ var names=Array.isArray(d.tables)?d.tables:[];renderQuestionTables(names);
+ $("prompt").value=d.prompt||"";$("hint").value=d.hint||"";$("solution").value=d.solution||"";
+ $("expected-output").value=Array.isArray(d.expectedOutput)?JSON.stringify(d.expectedOutput,null,2):(d.expectedOutput||"");$("active").checked=d.active!==false;$("save-btn").textContent="Save changes";renderExpectedPreview();window.scrollTo({top:0,behavior:"smooth"});
+}
+function toggleQuestion(id,active){db.collection("questions").doc(id).update({active:!active,updatedAt:firebase.firestore.FieldValue.serverTimestamp()}).then(function(){notice(active?"Question disabled.":"Question published.","ok");return loadAll();}).catch(function(e){notice("Update failed: "+e.message,"err");});}
+$("question-form").onsubmit=function(e){
+ e.preventDefault();
+ var expected=parseJsonField("expected-output","Expected output");if(expected!==null&&!Array.isArray(expected)){notice("Expected output must be a JSON array of rows.","err");return;}
+ var selected=Array.from($("question-tables").querySelectorAll("input[type=checkbox]:checked")).map(function(x){return x.value;});
+ var databaseId=$("question-database").value;
+ if(!databaseId){notice("Select a database.","err");return;}if(!selected.length){notice("Select at least one table for this question.","err");return;}
+ var data={title:$("title").value.trim(),topic:$("topic").value.trim(),difficulty:$("difficulty").value,tables:selected,databaseId:databaseId,prompt:$("prompt").value.trim(),hint:$("hint").value.trim(),solution:$("solution").value.trim(),expectedOutput:expected,active:$("active").checked,updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
+ if(!data.title||!data.topic||!data.prompt||!data.solution){notice("Complete title, topic, prompt and reference solution.","err");return;}
+ var req=editingId?db.collection("questions").doc(editingId).update(data):(data.createdAt=firebase.firestore.FieldValue.serverTimestamp(),db.collection("questions").add(data));
+ req.then(function(){notice(editingId?"Question updated successfully.":"Question added successfully.","ok");clearForm();return loadAll();}).catch(function(e){notice("Save failed: "+e.message,"err");});
+};
+
+function fillDatabaseForm(d){editingDatabaseId=d.id;$("database-name").value=d.name;$("database-active").checked=d.active!==false;$("database-save-btn").textContent="Save changes";window.scrollTo({top:document.body.scrollHeight,behavior:"smooth"});}
+$("database-form").onsubmit=function(e){e.preventDefault();var name=$("database-name").value.trim();if(!name){notice("Enter a database name.","err");return;}var data={name:name,active:$("database-active").checked,updatedAt:firebase.firestore.FieldValue.serverTimestamp()};var req=editingDatabaseId?db.collection("databases").doc(editingDatabaseId).update(data):(data.createdAt=firebase.firestore.FieldValue.serverTimestamp(),db.collection("databases").add(data));req.then(function(){notice(editingDatabaseId?"Database updated successfully.":"Database added successfully.","ok");clearDatabaseForm();return loadAll();}).catch(function(e){notice("Database save failed: "+e.message,"err");});};
+
+function renderTableList(){
+ var list=$("table-list");if(!TABLES.length){list.innerHTML='<div class="empty">No tables yet. Create your first table.</div>';return;}list.innerHTML="";
+ DATABASES.forEach(function(dbx){var group=tablesForDatabase(dbx.id);if(!group.length)return;var section=document.createElement("div");section.className="table-group";section.innerHTML='<div class="table-group-head"><strong>'+escapeHtml(dbx.name)+'</strong><span>'+group.length+' table'+(group.length===1?'':'s')+'</span></div>';
+  group.sort(function(a,b){return a.name.localeCompare(b.name);}).forEach(function(t){var item=document.createElement("div");item.className="table-item";item.innerHTML='<div><div class="table-name">'+escapeHtml(t.name)+'</div><div class="table-meta">'+t.columns.length+' columns · '+t.rows.length+' rows · '+(t.active?'available':'disabled')+'</div></div><div class="item-actions"><button class="btn edit-table-btn">Edit</button><button class="btn danger delete-table-btn">Delete</button></div>';
+   item.querySelector(".edit-table-btn").onclick=function(){fillTableForm(t);};item.querySelector(".delete-table-btn").onclick=function(){if(!confirm("Delete table '"+t.name+"'? Questions using it will no longer run."))return;db.collection("tables").doc(t.id).delete().then(function(){notice("Table deleted.","ok");return loadAll();}).catch(function(e){notice("Delete failed: "+e.message,"err");});};section.appendChild(item);});list.appendChild(section);});
+ var orphan=TABLES.filter(function(t){return !t.databaseId;});if(orphan.length){var section=document.createElement("div");section.className="table-group";section.innerHTML='<div class="table-group-head"><strong>Unassigned</strong><span>'+orphan.length+' table'+(orphan.length===1?'':'s')+'</span></div>';orphan.forEach(function(t){var item=document.createElement("div");item.className="table-item";item.innerHTML='<div><div class="table-name">'+escapeHtml(t.name)+'</div><div class="table-meta">Legacy table · '+t.columns.length+' columns · '+t.rows.length+' rows</div></div><button class="btn edit-table-btn">Assign / Edit</button>';item.querySelector("button").onclick=function(){fillTableForm(t);};section.appendChild(item);});list.appendChild(section);}
+}
+function normalizeSqlType(type){
+ type=String(type||'STRING').toUpperCase();
+ if(type.indexOf('INT')===0) return 'INT';
+ if(type.indexOf('DECIMAL')===0||type.indexOf('NUMERIC')===0||type.indexOf('FLOAT')===0||type.indexOf('DOUBLE')===0||type==='REAL') return 'NUMBER';
+ if(type.indexOf('CHAR')===0||type.indexOf('VARCHAR')===0||type.indexOf('TEXT')===0||type==='STRING') return 'STRING';
+ if(type.indexOf('DATE')===0||type.indexOf('TIME')===0) return 'DATE';
+ if(type==='BOOLEAN'||type==='BOOL') return 'BOOLEAN';
+ return 'STRING';
+}
+function parseCreateTableSQL(sql){
+ var m=sql.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:[A-Za-z_][A-Za-z0-9_]*\.)?([A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)\s*;?\s*$/is);
+ if(!m) throw new Error('Could not read CREATE TABLE. Use a normal CREATE TABLE table_name (column definitions...) statement.');
+ var tableName=m[1], body=m[2], parts=[], current='', depth=0, quote=null;
+ for(var i=0;i<body.length;i++){
+  var ch=body[i];
+  if(quote){current+=ch;if(ch===quote && body[i-1]!=='\\')quote=null;continue;}
+  if(ch==='"'||ch==="'"){quote=ch;current+=ch;continue;}
+  if(ch==='('){depth++;current+=ch;continue;}
+  if(ch===')'){depth--;current+=ch;continue;}
+  if(ch===','&&depth===0){parts.push(current.trim());current='';continue;}
+  current+=ch;
+ }
+ if(current.trim())parts.push(current.trim());
+ var columns=[];
+ parts.forEach(function(part){
+  var p=part.replace(/\s+CONSTRAINT\s+[^\s]+\s+PRIMARY\s+KEY\s*\([^)]*\)/ig,'').trim();
+  if(/^PRIMARY\s+KEY\s*\(/i.test(p)||/^FOREIGN\s+KEY/i.test(p)||/^UNIQUE\s*\(/i.test(p)||/^CHECK\s*\(/i.test(p)||/^CONSTRAINT\s/i.test(p))return;
+  var cm=p.match(/^([`"\[]?[A-Za-z_][A-Za-z0-9_]*[`"\]]?)\s+([A-Za-z]+(?:\s*\([^)]*\))?)/i);
+  if(!cm)return;
+  var name=cm[1].replace(/^[`"\[]|[`"\]]$/g,'');
+  var type=normalizeSqlType(cm[2]);
+  columns.push({name:name,type:type,pk:/\bPRIMARY\s+KEY\b/i.test(p)});
+ });
+ if(!columns.length)throw new Error('No columns could be read from CREATE TABLE.');
+ var pkMatch=body.match(/PRIMARY\s+KEY\s*\(\s*([`"\[]?[A-Za-z_][A-Za-z0-9_]*[`"\]]?)\s*\)/i);
+ if(pkMatch){var pkName=pkMatch[1].replace(/^[`"\[]|[`"\]]$/g,'');columns.forEach(function(c){if(c.name.toLowerCase()===pkName.toLowerCase())c.pk=true;});}
+ return {name:tableName,columns:columns};
+}
+function executeInsertSQL(createSql,insertSql){
+ var parsed=parseCreateTableSQL(createSql), table=parsed.name;
+ var statements=insertSql.split(/;\s*(?=INSERT\s+INTO|$)/i).map(function(x){return x.trim();}).filter(Boolean);
+ if(!statements.length)throw new Error('No INSERT statement found.');
+ try{
+  alasql('DROP TABLE IF EXISTS '+table);
+  alasql(createSql);
+  statements.forEach(function(stmt){alasql(stmt);});
+  var rows=alasql('SELECT * FROM '+table);
+  return {name:table,columns:parsed.columns,rows:rows};
+ }finally{
+  try{alasql('DROP TABLE IF EXISTS '+table);}catch(e){}
+ }
+}
+function setSqlStatus(msg,type){var el=$("table-sql-status");el.textContent=msg;el.className='sql-test-status '+(type||'');}
+function testTableSql(showOnly){
+ try{
+  var result=executeInsertSQL($("table-create-sql").value.trim(),$("table-insert-sql").value.trim());
+  $("table-name").value=result.name;
+  setSqlStatus('✓ SQL is valid — '+result.name+' created successfully with '+result.columns.length+' columns and '+result.rows.length+' rows.', 'ok');
+  return result;
+ }catch(e){setSqlStatus('✕ SQL test failed: '+(e.message||e),'err');return null;}
+}
+function fillTableForm(t){
+ editingTableId=t.id;
+ populateTableDatabaseOptions(t.databaseId);
+ $("table-database").value=t.databaseId||"";
+ $("table-name").value=t.name||"";
+ var cols=(t.columns||[]).map(function(c){return c.name+' '+c.type+(c.pk?' PRIMARY KEY':'');}).join(',\n  ');
+ $("table-create-sql").value='CREATE TABLE '+(t.name||'employees')+' (\n  '+cols+'\n);';
+ var names=(t.columns||[]).map(function(c){return c.name;});
+ var values=(t.rows||[]).map(function(row){return '('+names.map(function(n){var v=row[n];if(v===null||v===undefined)return 'NULL';if(typeof v==='number'||typeof v==='boolean')return String(v);return "'"+String(v).replace(/'/g,"''")+"'";}).join(', ')+')';}).join(',\n');
+ $("table-insert-sql").value='INSERT INTO '+(t.name||'employees')+' ('+names.join(', ')+') VALUES\n'+values+';';
+ $("table-active").checked=t.active!==false;
+ $("table-save-btn").textContent="Save table";
+ setSqlStatus('', '');
+ document.querySelector('.table-card').scrollIntoView({behavior:"smooth",block:"start"});
+}
+$("test-table-sql-btn").onclick=function(){testTableSql(false);};
+$("table-form").onsubmit=function(e){
+ e.preventDefault();
+ var result=testTableSql(true);if(!result)return;
+ var databaseId=$("table-database").value;if(!databaseId){notice("Select a database for this table.","err");return;}
+ var tableName=result.name;
+ if(!/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableName)){notice("Table name must contain only letters, numbers and underscores and cannot start with a number.","err");return;}
+ var duplicate=TABLES.find(function(t){return t.name.toLowerCase()===tableName.toLowerCase()&&t.id!==editingTableId;});if(duplicate){notice("A table named '"+tableName+"' already exists. Table names must be unique.","err");return;}
+ var data={name:tableName,databaseId:databaseId,columns:result.columns,rows:result.rows,active:$("table-active").checked,updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
+ var req=editingTableId?db.collection("tables").doc(editingTableId).update(data):(data.createdAt=firebase.firestore.FieldValue.serverTimestamp(),db.collection("tables").add(data));
+ req.then(function(){notice(editingTableId?"Table updated successfully.":"Table added successfully.","ok");clearTableForm();return loadAll();}).catch(function(e){notice("Table save failed: "+e.message,"err");});
+};
+
+$("preview-output-btn").onclick=renderExpectedPreview;
+$("format-output-btn").onclick=function(){
+  var raw=$("expected-output").value.trim();
+  if(!raw){renderExpectedPreview();return;}
+  try{
+    $("expected-output").value=JSON.stringify(JSON.parse(raw),null,2);
+    renderExpectedPreview();
+  }catch(e){notice("Expected output contains invalid JSON.","err");}
+};
+$("expected-output").addEventListener("input",function(){renderExpectedPreview();});
+$("clear-btn").onclick=clearForm;$("table-clear-btn").onclick=clearTableForm;$("database-clear-btn").onclick=clearDatabaseForm;$("home-btn").onclick=function(){location.href="index.html";};$("logout-btn").onclick=function(){auth.signOut().then(function(){location.href="login.html";});};
+auth.onAuthStateChanged(function(user){if(!user){location.href="login.html";return;}adminCheck(user).then(function(ok){if(!ok){notice("Access denied. This account is not configured as an admin.","err");$("question-form").style.display="none";return;}notice("Admin access granted · "+(user.email||"signed in"),"ok");return loadAll();}).catch(function(e){notice("Admin check failed: "+e.message,"err");});});
+})();
+</script></body>
+</html>

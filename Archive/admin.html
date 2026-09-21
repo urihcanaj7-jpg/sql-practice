@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Query Bench — Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/alasql/4.17.3/alasql.min.js"></script>
+<style>
+:root{--ink:#0B1220;--panel:#101A2B;--raised:#152037;--line:#22304A;--text:#E4E9F2;--dim:#8996AC;--faint:#5E6C85;--pk:#D4A657;--fk:#5B8DEF;--ok:#4ADE80;--err:#F87171;--font-head:'Space Grotesk',sans-serif;--font-body:'IBM Plex Sans',sans-serif;--font-code:'IBM Plex Mono',monospace}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--ink);color:var(--text);font-family:var(--font-body)}
+body{background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:28px 28px}
+.topbar{position:sticky;top:0;z-index:20;padding:14px 20px;background:color-mix(in srgb,var(--ink) 92%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:10px}.mark{width:30px;height:30px;border-radius:6px;background:linear-gradient(135deg,var(--pk),var(--fk));display:flex;align-items:center;justify-content:center;color:#0B1220;font:600 12px var(--font-code)}.name{font:600 17px var(--font-head)}.sub{font:11px var(--font-code);color:var(--faint)}
+.actions{display:flex;align-items:center;gap:8px}.btn{border:1px solid var(--line);background:none;color:var(--text);border-radius:7px;padding:8px 12px;cursor:pointer;font:500 12px var(--font-body)}.btn:hover{border-color:var(--fk)}.primary{background:var(--pk);border-color:var(--pk);color:#1A1204}.danger:hover{border-color:var(--err);color:var(--err)}.small{padding:6px 9px;font-size:11px}
+.wrap{max-width:1500px;margin:0 auto;padding:22px}.notice{padding:10px 12px;border:1px solid var(--line);background:var(--panel);border-radius:8px;color:var(--dim);font:12px var(--font-code);margin-bottom:16px}.notice.ok{color:var(--ok)}.notice.err{color:var(--err)}
+.layout{display:grid;grid-template-columns:310px minmax(0,1fr);gap:16px;align-items:start}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}.head{padding:11px 14px;background:var(--raised);border-bottom:1px solid var(--line);font:600 12px var(--font-code);color:var(--dim);display:flex;justify-content:space-between;align-items:center}.body{padding:14px}
+.database{border:1px solid var(--line);border-radius:8px;margin-bottom:9px;overflow:hidden}.db-head{display:flex;align-items:center;justify-content:space-between;padding:9px 10px;background:var(--raised);cursor:pointer}.db-name{font:600 12px var(--font-code)}.db-meta{font:10px var(--font-code);color:var(--faint)}.table-list{padding:5px}.table-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 8px;border-radius:6px;color:var(--dim);font:12px var(--font-code)}.table-row:hover{background:var(--raised);color:var(--text)}.table-row.active{background:var(--raised);color:var(--text);box-shadow:inset 2px 0 var(--fk)}.table-name{cursor:pointer;flex:1}.empty{padding:16px;color:var(--faint);font:11px/1.5 var(--font-code)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{margin-bottom:12px}.field label{display:block;color:var(--dim);font:11px var(--font-code);margin-bottom:6px}
+input,textarea,select{width:100%;background:var(--ink);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:9px 10px;font:13px var(--font-body)}input:focus,textarea:focus,select:focus{outline:none;border-color:var(--fk)}textarea{min-height:90px;resize:vertical}textarea.code{min-height:155px;font:12.5px/1.55 var(--font-code)}
+.help{color:var(--faint);font:11px/1.5 var(--font-code)}.form-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.section{margin-top:16px}.section:first-child{margin-top:0}.section-title{font:600 11px var(--font-code);color:var(--dim);margin-bottom:8px}
+.db-choice{border:1px solid var(--line);border-radius:8px;padding:9px 10px;background:var(--raised)}
+.check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.check-group{border:1px solid var(--line);border-radius:8px;padding:9px;background:var(--ink)}.check-group-title{font:600 11px var(--font-code);color:var(--pk);margin-bottom:7px}.check{display:flex;align-items:center;gap:7px;color:var(--dim);font:12px var(--font-body);padding:3px 0}.check input{width:auto}
+.question-list{max-height:460px;overflow:auto}.qitem{padding:10px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px}.qtitle{font-size:12.5px;font-weight:600}.meta{margin-top:4px;color:var(--faint);font:10.5px var(--font-code)}
+.table-preview{margin-top:10px;border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:280px}.table-preview table{width:100%;border-collapse:collapse;font:11px var(--font-code);min-width:500px}.table-preview th,.table-preview td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}.table-preview th{background:var(--raised);color:var(--dim);position:sticky;top:0}.table-preview td{color:var(--text)}
+.overlay{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;padding:20px}.overlay.open{display:flex}.modal{width:min(900px,100%);max-height:92vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 24px 70px rgba(0,0,0,.4)}.modal-head{padding:14px 16px;background:var(--raised);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}.modal-title{font:600 14px var(--font-head)}.modal-body{padding:16px}.modal-foot{padding:12px 16px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px}
+.sql-status{padding:9px 10px;border:1px solid var(--line);border-radius:7px;font:11px var(--font-code);color:var(--dim);margin-top:8px;white-space:pre-wrap}.sql-status.ok{color:var(--ok);border-color:var(--ok)}.sql-status.err{color:var(--err);border-color:var(--err)}
+@media(max-width:950px){.layout{grid-template-columns:1fr}.check-grid{grid-template-columns:1fr}}@media(max-width:600px){.row{grid-template-columns:1fr}.wrap{padding:14px}.topbar{padding:12px}.sub{display:none}.check-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand"><div class="mark">SQL</div><div><div class="name">Query Bench · Admin</div><div class="sub">Databases · tables · SQL interview questions</div></div></div>
+  <div class="actions"><button class="btn" id="home-btn">← Practice</button><button class="btn danger" id="logout-btn">Log out</button></div>
+</div>
+
+<main class="wrap">
+  <div id="notice" class="notice">Checking authentication…</div>
+
+  <div class="layout">
+    <aside>
+      <section class="card">
+        <div class="head"><span>DATABASES & TABLES</span><button class="btn small primary" id="new-db-btn">+ Database</button></div>
+        <div class="body">
+          <div class="help" style="margin-bottom:10px">Tables are grouped by logical database. Create a table once, then select it for any question.</div>
+          <div id="database-list"><div class="empty">Loading…</div></div>
+          <button class="btn" style="width:100%;margin-top:4px" id="new-table-btn">+ Create New Table</button>
+        </div>
+      </section>
+      <section class="card" style="margin-top:16px">
+        <div class="head"><span>TABLE DETAILS</span></div>
+        <div class="body" id="table-details"><div class="empty">Select a table to inspect it.</div></div>
+      </section>
+    </aside>
+
+    <section>
+      <section class="card">
+        <div class="head"><span>QUESTION EDITOR</span><span class="help">Tables can be selected manually</span></div>
+        <div class="body">
+          <form id="question-form">
+            <div class="row">
+              <div class="field"><label>QUESTION TITLE</label><input id="title" required placeholder="Find duplicate employees"></div>
+              <div class="field"><label>TOPIC</label><input id="topic" required placeholder="Interview questions"></div>
+            </div>
+            <div class="row">
+              <div class="field"><label>DIFFICULTY</label><select id="difficulty"><option value="easy">easy</option><option value="medium" selected>medium</option><option value="hard">hard</option></select></div>
+              <div class="field"><label>STATUS</label><label class="check" style="margin-top:9px"><input type="checkbox" id="active" checked> Published / visible to students</label></div>
+            </div>
+            <div class="field"><label>QUESTION / PROMPT</label><textarea id="prompt" required placeholder="Write the SQL problem here..."></textarea></div>
+            <div class="field"><label>HINT</label><textarea id="hint" placeholder="Optional hint"></textarea></div>
+            <div class="field"><label>REFERENCE SOLUTION</label><textarea id="solution" class="code" required placeholder="SELECT ..."></textarea></div>
+
+            <div class="section">
+              <div class="section-title">TABLES USED BY THIS QUESTION</div>
+              <div id="table-picker" class="check-grid"><div class="empty">Loading tables…</div></div>
+              <div class="help" style="margin-top:7px">Only selected tables will be loaded for this question on the student practice page.</div>
+            </div>
+
+            <div class="form-actions"><button class="btn primary" type="submit" id="save-btn">Add question</button><button class="btn" type="button" id="clear-btn">Clear</button></div>
+          </form>
+        </div>
+      </section>
+
+      <section class="card" style="margin-top:16px">
+        <div class="head"><span>QUESTIONS IN FIRESTORE</span><span class="help" id="question-count"></span></div>
+        <div id="question-list" class="question-list"><div class="empty">Loading…</div></div>
+      </section>
+    </section>
+  </div>
+</main>
+
+<!-- Create database -->
+<div class="overlay" id="db-modal">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title">Create Database Group</div><button class="btn" data-close="db-modal">Close</button></div>
+    <div class="modal-body">
+      <div class="field"><label>DATABASE NAME</label><input id="db-name" placeholder="Interview Database"></div>
+      <div class="help">This is a logical group for Query Bench tables, not a separate Firebase database.</div>
+    </div>
+    <div class="modal-foot"><button class="btn" data-close="db-modal">Cancel</button><button class="btn primary" id="save-db-btn">Create database</button></div>
+  </div>
+</div>
+
+<!-- Create table -->
+<div class="overlay" id="table-modal">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title">Create New Table</div><button class="btn" data-close="table-modal">Close</button></div>
+    <div class="modal-body">
+      <div class="row">
+        <div class="field"><label>DATABASE</label><select id="table-db"></select></div>
+        <div class="field"><label>TABLE NAME</label><input id="table-name" placeholder="salary_history"></div>
+      </div>
+      <div class="field">
+        <label>CREATE TABLE COMMAND</label>
+        <textarea id="create-sql" class="code" placeholder="CREATE TABLE salary_history (
+    employee_id INT,
+    effective_date DATE,
+    salary DECIMAL(10,2)
+);"></textarea>
+      </div>
+      <div class="help">Write the SQL CREATE TABLE command yourself. Query Bench will validate it using the same AlaSQL engine used by the current browser practice environment.</div>
+      <div id="sql-status" class="sql-status">Not validated yet.</div>
+      <div class="field" style="margin-top:14px">
+        <label>OPTIONAL INITIAL DATA — INSERT COMMANDS</label>
+        <textarea id="seed-sql" class="code" placeholder="INSERT INTO salary_history VALUES (101, '2024-01-01', 60000);
+INSERT INTO salary_history VALUES (102, '2024-02-01', 70000);"></textarea>
+      </div>
+      <div class="help">You can leave this empty and add data later. INSERT statements are stored with the table and will be used when the student database is built.</div>
+    </div>
+    <div class="modal-foot"><button class="btn" data-close="table-modal">Cancel</button><button class="btn" id="validate-table-btn">Validate SQL</button><button class="btn primary" id="save-table-btn">Create table</button></div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+var firebaseConfig={
+ apiKey:"AIzaSyA4OQcxwiOFY5HwtTBhzkQ93Hh1oLvQrAk",
+ authDomain:"sql-practice-12fcc.firebaseapp.com",
+ projectId:"sql-practice-12fcc",
+ storageBucket:"sql-practice-12fcc.firebasestorage.app",
+ messagingSenderId:"191666286963",
+ appId:"1:191666286963:web:df15c2d37f4f5901665506",
+ measurementId:"G-K1RM8KN8XD"
+};
+if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+var db=firebase.firestore(),auth=firebase.auth(),editingId=null,tables=[],databases=[];
+
+function $(id){return document.getElementById(id);}
+function escapeHtml(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];});}
+function notice(msg,type){$("notice").textContent=msg;$("notice").className="notice "+(type||"");}
+function slug(s){return String(s).toLowerCase().trim().replace(/[^a-z0-9_]+/g,"_").replace(/^_+|_+$/g,"").slice(0,80);}
+function openModal(id){$(id).classList.add("open");}
+function closeModal(id){$(id).classList.remove("open");}
+document.querySelectorAll("[data-close]").forEach(function(b){b.onclick=function(){closeModal(b.getAttribute("data-close"));};});
+
+function adminCheck(user){
+ return db.collection("admins").doc(user.uid).get().then(function(s){return s.exists&&s.data().active===true;});
+}
+
+function seedBuiltInSales(){
+ return db.collection("databases").doc("sales").get().then(function(ds){
+   if(ds.exists) return;
+   return db.collection("databases").doc("sales").set({name:"Sales Database",slug:"sales",active:true,createdAt:firebase.firestore.FieldValue.serverTimestamp()})
+   .then(function(){
+     var defs=[
+       {name:"customers",sql:"CREATE TABLE customers (customer_id INT, name STRING, city STRING, segment STRING, signup_date STRING);",seed:
+"INSERT INTO customers VALUES (1,'Ravi Sen','Kolkata','Retail','2022-01-14');\nINSERT INTO customers VALUES (2,'Meera Iyer','Bengaluru','Retail','2022-02-03');\nINSERT INTO customers VALUES (3,'Arjun Nair','Kolkata','Wholesale','2021-11-20');\nINSERT INTO customers VALUES (4,'Priya Das','Mumbai','Retail','2023-03-11');\nINSERT INTO customers VALUES (5,'Karan Mehta','Delhi','Wholesale','2022-07-08');\nINSERT INTO customers VALUES (6,'Sara Khan','Mumbai','Retail','2023-01-25');\nINSERT INTO customers VALUES (7,'Vikram Rao','Chennai','Wholesale','2021-09-02');\nINSERT INTO customers VALUES (8,'Anita Roy','Kolkata','Retail','2022-12-19');\nINSERT INTO customers VALUES (9,'Divya Pillai','Bengaluru','Retail','2023-05-30');\nINSERT INTO customers VALUES (10,'Rohan Gupta','Delhi','Wholesale','2022-04-17');\nINSERT INTO customers VALUES (11,'Neha Kapoor','Pune','Retail','2023-07-01');"},
+       {name:"products",sql:"CREATE TABLE products (product_id INT, name STRING, category STRING, price NUMBER);",seed:
+"INSERT INTO products VALUES (1,'Wireless Mouse','Electronics',799);\nINSERT INTO products VALUES (2,'Mechanical Keyboard','Electronics',3499);\nINSERT INTO products VALUES (3,'USB-C Hub','Electronics',1299);\nINSERT INTO products VALUES (4,'Notebook Set','Stationery',249);\nINSERT INTO products VALUES (5,'Gel Pen Pack','Stationery',99);\nINSERT INTO products VALUES (6,'Desk Lamp','Home',1599);\nINSERT INTO products VALUES (7,'Office Chair','Home',6999);\nINSERT INTO products VALUES (8,'Water Bottle','Home',449);\nINSERT INTO products VALUES (9,'Backpack','Accessories',1899);\nINSERT INTO products VALUES (10,'Wireless Earbuds','Electronics',2299);\nINSERT INTO products VALUES (11,'Sticky Notes','Stationery',79);\nINSERT INTO products VALUES (12,'Monitor Stand','Home',899);\nINSERT INTO products VALUES (13,'Desk Organizer','Home',349);"},
+       {name:"orders",sql:"CREATE TABLE orders (order_id INT, customer_id INT, order_date STRING, status STRING);",seed:
+"INSERT INTO orders VALUES (1,1,'2023-06-01','Delivered');\nINSERT INTO orders VALUES (2,2,'2023-06-02','Delivered');\nINSERT INTO orders VALUES (3,1,'2023-06-05','Delivered');\nINSERT INTO orders VALUES (4,3,'2023-06-06','Pending');\nINSERT INTO orders VALUES (5,4,'2023-06-07','Delivered');\nINSERT INTO orders VALUES (6,5,'2023-06-08','Cancelled');\nINSERT INTO orders VALUES (7,2,'2023-06-10','Delivered');\nINSERT INTO orders VALUES (8,6,'2023-06-11','Delivered');\nINSERT INTO orders VALUES (9,7,'2023-06-12','Pending');\nINSERT INTO orders VALUES (10,8,'2023-06-13','Delivered');\nINSERT INTO orders VALUES (11,3,'2023-06-15','Delivered');\nINSERT INTO orders VALUES (12,9,'2023-06-16','Delivered');\nINSERT INTO orders VALUES (13,10,'2023-06-17','Cancelled');\nINSERT INTO orders VALUES (14,1,'2023-06-19','Delivered');\nINSERT INTO orders VALUES (15,4,'2023-06-20','Pending');\nINSERT INTO orders VALUES (16,6,'2023-06-21','Delivered');\nINSERT INTO orders VALUES (17,5,'2023-06-22','Delivered');\nINSERT INTO orders VALUES (18,8,'2023-06-24','Delivered');\nINSERT INTO orders VALUES (19,2,'2023-06-25','Pending');\nINSERT INTO orders VALUES (20,9,'2023-06-27','Delivered');"},
+       {name:"order_items",sql:"CREATE TABLE order_items (order_item_id INT, order_id INT, product_id INT, quantity INT);",seed:
+"INSERT INTO order_items VALUES (1,1,1,2);\nINSERT INTO order_items VALUES (2,1,4,1);\nINSERT INTO order_items VALUES (3,2,2,1);\nINSERT INTO order_items VALUES (4,3,5,3);\nINSERT INTO order_items VALUES (5,4,7,1);\nINSERT INTO order_items VALUES (6,5,3,1);\nINSERT INTO order_items VALUES (7,5,6,2);\nINSERT INTO order_items VALUES (8,6,9,1);\nINSERT INTO order_items VALUES (9,7,10,1);\nINSERT INTO order_items VALUES (10,7,11,5);\nINSERT INTO order_items VALUES (11,8,1,1);\nINSERT INTO order_items VALUES (12,9,7,1);\nINSERT INTO order_items VALUES (13,10,2,1);\nINSERT INTO order_items VALUES (14,10,8,2);\nINSERT INTO order_items VALUES (15,11,4,2);\nINSERT INTO order_items VALUES (16,11,5,4);\nINSERT INTO order_items VALUES (17,12,12,1);\nINSERT INTO order_items VALUES (18,13,9,1);\nINSERT INTO order_items VALUES (19,14,3,2);\nINSERT INTO order_items VALUES (20,14,10,1);\nINSERT INTO order_items VALUES (21,15,7,1);\nINSERT INTO order_items VALUES (22,16,1,3);\nINSERT INTO order_items VALUES (23,16,6,1);\nINSERT INTO order_items VALUES (24,17,8,3);\nINSERT INTO order_items VALUES (25,17,10,1);\nINSERT INTO order_items VALUES (26,18,2,1);\nINSERT INTO order_items VALUES (27,18,4,1);\nINSERT INTO order_items VALUES (28,19,6,1);\nINSERT INTO order_items VALUES (29,20,12,2);\nINSERT INTO order_items VALUES (30,20,9,1);"}
+     ];
+     var batch=db.batch();
+     defs.forEach(function(t){
+       var ref=db.collection("tables").doc(t.name);
+       batch.set(ref,{databaseId:"sales",databaseName:"Sales Database",tableName:t.name,createSQL:t.sql,seedSQL:t.seed,active:true,createdAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+     });
+     return batch.commit();
+   });
+ });
+}
+
+function loadDatabases(){
+ return db.collection("databases").where("active","==",true).get().then(function(snap){
+   databases=[];snap.forEach(function(d){databases.push({id:d.id,data:d.data()});});
+   databases.sort(function(a,b){return String(a.data.name||"").localeCompare(String(b.data.name||""));});
+   renderDatabases();renderDbSelect();renderTablePicker();
+ });
+}
+function loadTables(){
+ return db.collection("tables").where("active","==",true).get().then(function(snap){
+   tables=[];snap.forEach(function(d){tables.push({id:d.id,data:d.data()});});
+   tables.sort(function(a,b){return String(a.data.tableName||"").localeCompare(String(b.data.tableName||""));});
+   renderDatabases();renderTablePicker();
+ });
+}
+function refreshData(){return Promise.all([loadDatabases(),loadTables(),loadQuestions()]);}
+
+function renderDatabases(){
+ var root=$("database-list");
+ if(!databases.length){root.innerHTML='<div class="empty">No database groups yet.</div>';return;}
+ root.innerHTML="";
+ databases.forEach(function(dbx){
+   var d=dbx.data, group=document.createElement("div");group.className="database";
+   var dbTables=tables.filter(function(t){return t.data.databaseId===dbx.id;});
+   var head=document.createElement("div");head.className="db-head";
+   head.innerHTML='<div><div class="db-name">'+escapeHtml(d.name||dbx.id)+'</div><div class="db-meta">'+dbTables.length+' table'+(dbTables.length===1?"":"s")+'</div></div><span>▾</span>';
+   var list=document.createElement("div");list.className="table-list";
+   if(!dbTables.length) list.innerHTML='<div class="empty">No tables yet.</div>';
+   dbTables.forEach(function(t){
+     var row=document.createElement("div");row.className="table-row";
+     row.innerHTML='<span class="table-name">'+escapeHtml(t.data.tableName)+'</span><button class="btn small">View</button>';
+     row.querySelector(".table-name").onclick=function(){showTable(t);};
+     row.querySelector("button").onclick=function(){showTable(t);};
+     list.appendChild(row);
+   });
+   head.onclick=function(){list.style.display=list.style.display==="none"?"block":"none";};
+   group.appendChild(head);group.appendChild(list);root.appendChild(group);
+ });
+}
+
+function renderDbSelect(){
+ var s=$("table-db");s.innerHTML="";
+ databases.forEach(function(d){var o=document.createElement("option");o.value=d.id;o.textContent=d.data.name;s.appendChild(o);});
+}
+function renderTablePicker(selected){
+ selected=selected||getSelectedTables();
+ var root=$("table-picker");
+ if(!databases.length){root.innerHTML='<div class="empty">Create a database first.</div>';return;}
+ root.innerHTML="";
+ databases.forEach(function(dbx){
+   var group=document.createElement("div");group.className="check-group";
+   var dbTables=tables.filter(function(t){return t.data.databaseId===dbx.id;});
+   group.innerHTML='<div class="check-group-title">'+escapeHtml(dbx.data.name)+'</div>';
+   if(!dbTables.length){group.innerHTML+='<div class="help">No tables</div>';}
+   dbTables.forEach(function(t){
+     var label=document.createElement("label");label.className="check";
+     var cb=document.createElement("input");cb.type="checkbox";cb.value=t.data.tableName;cb.setAttribute("data-table-id",t.id);cb.checked=selected.indexOf(t.data.tableName)!==-1;
+     label.appendChild(cb);label.appendChild(document.createTextNode(t.data.tableName));group.appendChild(label);
+   });
+   root.appendChild(group);
+ });
+}
+function getSelectedTables(){return Array.prototype.slice.call(document.querySelectorAll('#table-picker input[type="checkbox"]:checked')).map(function(x){return x.value;});}
+
+function showTable(t){
+ var d=t.data, root=$("table-details");
+ root.innerHTML='<div class="section-title">'+escapeHtml(d.tableName)+'</div><div class="help">'+escapeHtml(d.databaseName||"")+'</div><div class="field" style="margin-top:10px"><label>CREATE SQL</label><textarea class="code" readonly>'+escapeHtml(d.createSQL||"")+'</textarea></div><div class="field"><label>INITIAL DATA SQL</label><textarea class="code" readonly>'+escapeHtml(d.seedSQL||"")+'</textarea></div><div class="form-actions"><button class="btn danger small" id="delete-table-btn">Delete table</button></div>';
+ $("delete-table-btn").onclick=function(){
+   if(!confirm("Delete table '"+d.tableName+"'? Questions that reference it will keep the name until you edit them.")) return;
+   db.collection("tables").doc(t.id).delete().then(function(){notice("Table deleted.","ok");$("table-details").innerHTML='<div class="empty">Select a table to inspect it.</div>';return loadTables();}).catch(function(e){notice("Delete failed: "+e.message,"err");});
+ };
+}
+
+function fillForm(id,d){
+ editingId=id;$("title").value=d.title||"";$("topic").value=d.topic||"";$("difficulty").value=d.difficulty||"medium";$("prompt").value=d.prompt||"";$("hint").value=d.hint||"";$("solution").value=d.solution||"";$("active").checked=d.active!==false;
+ renderTablePicker(Array.isArray(d.tables)?d.tables:[]);
+ $("save-btn").textContent="Save changes";window.scrollTo({top:0,behavior:"smooth"});
+}
+function clearForm(){editingId=null;$("question-form").reset();$("difficulty").value="medium";$("active").checked=true;renderTablePicker([]);$("save-btn").textContent="Add question";}
+
+function loadQuestions(){
+ return db.collection("questions").get().then(function(snap){
+   var rows=[];snap.forEach(function(doc){rows.push({id:doc.id,data:doc.data()||{}});});
+   rows.sort(function(a,b){var av=a.data.createdAt&&a.data.createdAt.toMillis?a.data.createdAt.toMillis():0;var bv=b.data.createdAt&&b.data.createdAt.toMillis?b.data.createdAt.toMillis():0;return bv-av;});
+   $("question-count").textContent=rows.length+" question"+(rows.length===1?"":"s");
+   var list=$("question-list");
+   if(!rows.length){list.innerHTML='<div class="empty">No Admin questions yet. Add your first question.</div>';return;}
+   list.innerHTML="";
+   rows.forEach(function(row){
+     var d=row.data,item=document.createElement("div");item.className="qitem";
+     var selected=Array.isArray(d.tables)?d.tables.length:0;
+     item.innerHTML='<div><div class="qtitle">'+escapeHtml(d.title||"Untitled")+'</div><div class="meta">'+escapeHtml(d.topic||"Uncategorized")+' · '+escapeHtml(d.difficulty||"medium")+' · '+selected+' table'+(selected===1?"":"s")+' · '+(d.active===false?"disabled":"published")+'</div></div><div class="actions"><button class="btn small">Edit</button><button class="btn small danger">'+(d.active===false?"Publish":"Disable")+'</button></div>';
+     item.querySelectorAll("button")[0].onclick=function(){fillForm(row.id,d);};
+     item.querySelectorAll("button")[1].onclick=function(){db.collection("questions").doc(row.id).update({active:d.active===false,updatedAt:firebase.firestore.FieldValue.serverTimestamp()}).then(function(){return loadQuestions();});};
+     list.appendChild(item);
+   });
+ });
+}
+
+function parseCreateTable(sql){
+ var clean=String(sql||"").trim().replace(/;+\s*$/,"");
+ var m=clean.match(/^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:[`"\[]?([A-Za-z_][A-Za-z0-9_]*)[`"\]]?)\s*\(/i);
+ if(!m) throw new Error("Command must start with CREATE TABLE table_name (...).");
+ return {sql:clean+";",name:m[1]};
+}
+function validateTableSQL(showMessage){
+ var parsed=parseCreateTable($("create-sql").value);
+ if($("table-name").value.trim() && $("table-name").value.trim().toLowerCase()!==parsed.name.toLowerCase()) throw new Error("Table name does not match the CREATE TABLE command.");
+ if(!/^[A-Za-z_][A-Za-z0-9_]*$/.test(parsed.name)) throw new Error("Use a simple SQL table name such as employees or salary_history.");
+ var exists=tables.some(function(t){return t.data.tableName.toLowerCase()===parsed.name.toLowerCase();});
+ if(exists) throw new Error("A table with this name already exists.");
+ var temp="__qb_validate_"+Date.now();
+ var testSql=parsed.sql.replace(new RegExp("(^CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?)([`\"\\[]?"+parsed.name.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"[`\"\\]]?)(\\s*\\()","i"),"$1"+temp+"$3");
+ try{alasql(testSql);alasql("DROP TABLE IF EXISTS "+temp);}
+ catch(e){try{alasql("DROP TABLE IF EXISTS "+temp);}catch(_e){} throw new Error("AlaSQL validation failed: "+(e.message||e));}
+ var seed=$("seed-sql").value.trim();
+ if(seed){
+   try{
+     alasql(testSql);
+     seed.split(";").map(function(x){return x.trim();}).filter(Boolean).forEach(function(stmt){var s=stmt.replace(new RegExp("\\b"+parsed.name+"\\b","gi"),temp);alasql(s);});
+     alasql("DROP TABLE IF EXISTS "+temp);
+   }catch(e2){try{alasql("DROP TABLE IF EXISTS "+temp);}catch(_e2){} throw new Error("Initial INSERT validation failed: "+(e2.message||e2));}
+ }
+ if(showMessage){$("sql-status").textContent="Valid CREATE TABLE command for "+parsed.name+"."; $("sql-status").className="sql-status ok";}
+ return parsed;
+}
+
+$("new-db-btn").onclick=function(){$("db-name").value="";openModal("db-modal");};
+$("save-db-btn").onclick=function(){
+ var name=$("db-name").value.trim(), id=slug(name);
+ if(!name||!id){notice("Enter a valid database name.","err");return;}
+ if(databases.some(function(d){return d.id===id;})){notice("That database already exists.","err");return;}
+ db.collection("databases").doc(id).set({name:name,slug:id,active:true,createdAt:firebase.firestore.FieldValue.serverTimestamp()})
+ .then(function(){closeModal("db-modal");notice("Database created: "+name,"ok");return loadDatabases();})
+ .catch(function(e){notice("Database creation failed: "+e.message,"err");});
+};
+$("new-table-btn").onclick=function(){if(!databases.length){notice("Create a database first.","err");return;}renderDbSelect();$("table-name").value="";$("create-sql").value="";$("seed-sql").value="";$("sql-status").textContent="Not validated yet.";$("sql-status").className="sql-status";openModal("table-modal");};
+$("validate-table-btn").onclick=function(){try{validateTableSQL(true);}catch(e){$("sql-status").textContent=e.message;$("sql-status").className="sql-status err";}};
+$("save-table-btn").onclick=function(){
+ var parsed;
+ try{parsed=validateTableSQL(false);}catch(e){$("sql-status").textContent=e.message;$("sql-status").className="sql-status err";return;}
+ var dbid=$("table-db").value, dbx=databases.filter(function(d){return d.id===dbid;})[0], name=parsed.name;
+ var data={databaseId:dbid,databaseName:dbx.data.name,tableName:name,createSQL:parsed.sql,seedSQL:$("seed-sql").value.trim(),active:true,updatedAt:firebase.firestore.FieldValue.serverTimestamp(),createdAt:firebase.firestore.FieldValue.serverTimestamp()};
+ db.collection("tables").doc(name).set(data,{merge:false}).then(function(){closeModal("table-modal");notice("Table created: "+name,"ok");return loadTables();}).catch(function(e){notice("Table creation failed: "+e.message,"err");});
+};
+
+$("question-form").onsubmit=function(e){
+ e.preventDefault();
+ var selected=getSelectedTables();
+ var data={title:$("title").value.trim(),topic:$("topic").value.trim(),difficulty:$("difficulty").value,tables:selected,prompt:$("prompt").value.trim(),hint:$("hint").value.trim(),solution:$("solution").value.trim(),active:$("active").checked,updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
+ if(!data.title||!data.topic||!data.tables.length||!data.prompt||!data.solution){notice("Complete title, topic, at least one table, prompt and reference solution.","err");return;}
+ var req;
+ if(editingId) req=db.collection("questions").doc(editingId).update(data);
+ else{data.createdAt=firebase.firestore.FieldValue.serverTimestamp();req=db.collection("questions").add(data);}
+ req.then(function(){notice(editingId?"Question updated successfully.":"Question added successfully.","ok");clearForm();return loadQuestions();}).catch(function(e){notice("Save failed: "+e.message,"err");});
+};
+$("clear-btn").onclick=clearForm;$("home-btn").onclick=function(){location.href="index.html";};$("logout-btn").onclick=function(){auth.signOut().then(function(){location.href="login.html";});};
+
+auth.onAuthStateChanged(function(user){
+ if(!user){location.href="login.html";return;}
+ adminCheck(user).then(function(ok){
+   if(!ok){notice("Access denied. This account is not configured as an admin.","err");return;}
+   notice("Admin access granted · "+(user.email||"signed in"),"ok");
+   return seedBuiltInSales().then(function(){return refreshData();});
+ }).catch(function(e){notice("Admin initialization failed: "+e.message,"err");});
+});
+})();
+</script>
+</body>
+</html>
