@@ -12,8 +12,8 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css">
 <script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore-compat.js"></script>
 <script src="js/auth.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/alasql@4.17.3/dist/alasql.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
@@ -120,7 +120,13 @@
     font-family:var(--font-body);
     font-size:12px;
   }
-  .logout-btn:hover{ border-color:var(--err); color:var(--text); }
+  .logout-btn:hover{ border-color:var(--err); color:var(--text); }  .admin-link{
+    display:none; align-items:center; gap:6px; background:none;
+    border:1px solid var(--line); color:var(--text-dim); border-radius:8px;
+    padding:7px 10px; cursor:pointer; font-family:var(--font-body); font-size:12px;
+  }
+  .admin-link:hover{ border-color:var(--pk); color:var(--pk); }
+
   @media (max-width:700px){
     .auth-user-email{ display:none; }
   }
@@ -578,6 +584,7 @@
     <div class="score-pill">Solved <b id="score-count">0</b>/<span id="score-total">0</span></div>
     <div class="auth-user">
       <span class="auth-user-email" id="auth-user-email" title=""></span>
+      <button class="admin-link" id="admin-link" type="button">⚙ Admin</button>
       <button class="logout-btn" id="logout-btn" type="button">Log out</button>
     </div>
     <button class="icon-btn" id="theme-toggle" title="Toggle light/dark" aria-label="Toggle theme">◐</button>
@@ -682,9 +689,89 @@
   </main>
 </div>
 
-<script>
-(function(){
+<script type="module">
+(async function(){
   "use strict";
+
+  /*
+   * Load DuckDB dynamically so a CDN/module failure is caught by the
+   * initialization error handler instead of leaving the page at Loading…
+   */
+  var duckdb;
+  try {
+    duckdb = await import("https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.32.0/+esm");
+  } catch(importError) {
+    console.error("DuckDB-WASM module load failed:", importError);
+    var statusEl = document.getElementById("db-status");
+    var resultsEl = document.getElementById("results-target");
+    if (statusEl) statusEl.textContent = "database error";
+    if (resultsEl) {
+      var msg = importError && importError.message ? importError.message : String(importError);
+      resultsEl.innerHTML =
+        '<div class="sql-error">' +
+          '<div class="sql-error-head"><span>✕</span><span>DuckDB-WASM failed to load</span></div>' +
+          '<div class="sql-error-body">' + String(msg).replace(/[&<>"]/g, function(c){
+            return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];
+          }) + '</div>' +
+        '</div>';
+    }
+    return;
+  }
+
+  /* ============ DUCKDB-WASM SQL ENGINE ============ */
+  var duckDb = null;
+  var duckConn = null;
+  var duckDbReady = null;
+
+  function duckType(type){
+    type = String(type || "STRING").toUpperCase();
+    if (type === "INT" || type === "INTEGER") return "INTEGER";
+    if (type === "NUMBER" || type === "DECIMAL" || type === "FLOAT") return "DOUBLE";
+    if (type === "BOOLEAN" || type === "BOOL") return "BOOLEAN";
+    if (type === "DATE") return "DATE";
+    if (type === "TIMESTAMP" || type === "DATETIME") return "TIMESTAMP";
+    return "VARCHAR";
+  }
+
+  function sqlLiteral(value){
+    if (value === null || value === undefined) return "NULL";
+    if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+    if (typeof value === "number") return Number.isFinite(value) ? String(value) : "NULL";
+    if (value instanceof Date) return "'" + value.toISOString().replace(/T.*$/, "") + "'";
+    return "'" + String(value).replace(/'/g, "''") + "'";
+  }
+
+  async function initDuckDB(){
+    if (duckDbReady) return duckDbReady;
+    duckDbReady = (async function(){
+      var bundles = duckdb.getJsDelivrBundles();
+      var bundle = await duckdb.selectBundle(bundles);
+      var workerUrl = URL.createObjectURL(
+        new Blob(['importScripts("' + bundle.mainWorker + '");'], {type:"text/javascript"})
+      );
+      var worker = new Worker(workerUrl);
+      var logger = new duckdb.ConsoleLogger();
+      duckDb = new duckdb.AsyncDuckDB(logger, worker);
+      await duckDb.instantiate(bundle.mainModule, bundle.pthreadWorker);
+      URL.revokeObjectURL(workerUrl);
+      duckConn = await duckDb.connect();
+      return duckConn;
+    })();
+    return duckDbReady;
+  }
+
+  async function dbQuery(sql){
+    var conn = await initDuckDB();
+    var result = await conn.query(sql);
+    return result.toArray().map(function(row){
+      return typeof row.toJSON === "function" ? row.toJSON() : row;
+    });
+  }
+
+  async function dbExec(sql){
+    await initDuckDB();
+    await duckConn.query(sql);
+  }
 
   /* ============ AUTH UI ============ */
   function renderAuthUser(user){
@@ -699,6 +786,194 @@
     renderAuthUser(window.QueryBenchAuth.currentUser);
   }
 
+  /* ============ FIRESTORE QUESTION + TABLE STORE ============ */
+  var FIRESTORE_QUESTIONS = [];
+  var FIRESTORE_TABLES = {};
+
+  function getFirestoreDb(){
+    try {
+      if (window.firebase && firebase.apps && firebase.apps.length) return firebase.firestore();
+    } catch(e) {
+      console.warn("Firestore is unavailable:", e);
+    }
+    return null;
+  }
+
+  function parseExpectedOutput(value){
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === "object"){
+      if (Array.isArray(value.rows)) return value.rows;
+      return [value];
+    }
+    if (typeof value === "string" && value.trim()){
+      try {
+        var parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) return parsed;
+        if (parsed && Array.isArray(parsed.rows)) return parsed.rows;
+        if (parsed && typeof parsed === "object") return [parsed];
+      } catch(e){
+        console.warn("Invalid expected output JSON:", e);
+      }
+    }
+    return null;
+  }
+
+  function inferType(value){
+    if (typeof value === "number") return Number.isInteger(value) ? "INT" : "NUMBER";
+    if (typeof value === "boolean") return "BOOLEAN";
+    if (value instanceof Date) return "DATE";
+    return "STRING";
+  }
+
+  function normalizeFirestoreTable(name, d){
+    d = d || {};
+    var rawCols = Array.isArray(d.columns) ? d.columns :
+                  (Array.isArray(d.cols) ? d.cols :
+                  (Array.isArray(d.schema) ? d.schema : []));
+    var rawRows = Array.isArray(d.rows) ? d.rows :
+                  (Array.isArray(d.data) ? d.data : []);
+
+    var cols = rawCols.map(function(c){
+      if (Array.isArray(c)){
+        return {name:String(c[0]), type:String(c[1] || "STRING").toUpperCase(), pk:false, fk:false};
+      }
+      c = c || {};
+      return {
+        name:String(c.name || c.column || c.field || ""),
+        type:String(c.type || "STRING").toUpperCase(),
+        pk:c.pk === true || c.key === true || c.primaryKey === true,
+        fk:c.fk === true || c.foreignKey === true
+      };
+    }).filter(function(c){ return c.name; });
+
+    if (!cols.length && rawRows.length){
+      var first = rawRows[0];
+      if (first && typeof first === "object" && !Array.isArray(first)){
+        Object.keys(first).forEach(function(k){
+          cols.push({name:k,type:inferType(first[k]),pk:false,fk:false});
+        });
+      }
+    }
+
+    var rows = rawRows.map(function(row){
+      if (Array.isArray(row)) return row;
+      return cols.map(function(c){ return row ? row[c.name] : null; });
+    });
+
+    return {
+      name:name,
+      pk:d.pk || (cols.find(function(c){return c.pk;}) || {}).name || null,
+      fks:Array.isArray(d.fks) ? d.fks : cols.filter(function(c){return c.fk;}).map(function(c){return c.name;}),
+      cols:cols.map(function(c){ return [c.name, c.type]; }),
+      rows:rows
+    };
+  }
+
+  function loadFirestoreTables(){
+    var db = getFirestoreDb();
+    if (!db) return Promise.resolve();
+
+    return db.collection("tables").get().then(function(snapshot){
+      var loaded = {};
+      snapshot.forEach(function(doc){
+        var d = doc.data() || {};
+        if (d.active === false) return;
+        var name = String(d.name || doc.id || "").trim();
+        if (!name) return;
+        loaded[name] = normalizeFirestoreTable(name, d);
+      });
+      FIRESTORE_TABLES = loaded;
+    }).catch(function(err){
+      console.warn("Could not load Firestore tables:", err);
+    });
+  }
+
+  function rebuildQuestionIndex(){
+    QUESTIONS = QUESTIONS.filter(function(q){ return !q._fromFirestore; });
+    FIRESTORE_QUESTIONS.forEach(function(q){ QUESTIONS.push(q); });
+    TOPIC_ORDER = [];
+    QUESTIONS.forEach(function(q, i){
+      q.id = i;
+      if (TOPIC_ORDER.indexOf(q.topic) === -1) TOPIC_ORDER.push(q.topic);
+    });
+  }
+
+  function loadFirestoreQuestions(){
+    var db = getFirestoreDb();
+    if (!db) return Promise.resolve();
+
+    return db.collection("questions").get().then(function(snapshot){
+      var loaded = [];
+      snapshot.forEach(function(doc){
+        var d = doc.data() || {};
+        if (d.active === false) return;
+        loaded.push({
+          firestoreId: doc.id,
+          _fromFirestore: true,
+          topic: d.topic || "Uncategorized",
+          difficulty: d.difficulty || "medium",
+          title: d.title || "Untitled question",
+          prompt: d.prompt || "",
+          tables: Array.isArray(d.tables) ? d.tables : [],
+          solution: d.solution || "",
+          hint: d.hint || "",
+          expectedOutput: parseExpectedOutput(d.expectedOutput !== undefined ? d.expectedOutput :
+                                              (d.expected_output !== undefined ? d.expected_output : d.expected))
+        });
+      });
+      FIRESTORE_QUESTIONS = loaded;
+      rebuildQuestionIndex();
+      expectedCache = {};
+      renderSidebar();
+      updateScore();
+      document.getElementById("footer-count").textContent = QUESTIONS.length;
+    }).catch(function(err){
+      console.warn("Could not load Firestore questions:", err);
+    });
+  }
+
+  function checkAdminAccess(){
+    var db = getFirestoreDb();
+    if (!db || !window.firebase || !firebase.auth) return Promise.resolve(false);
+
+    return new Promise(function(resolve){
+      var settled = false;
+      function checkUser(user){
+        if (settled) return;
+        if (!user){
+          settled = true;
+          resolve(false);
+          return;
+        }
+        db.collection("admins").doc(user.uid).get().then(function(doc){
+          settled = true;
+          if (doc.exists && doc.data() && doc.data().active === true){
+            var adminBtn = document.getElementById("admin-link");
+            if (adminBtn){
+              adminBtn.style.display = "inline-flex";
+              adminBtn.onclick = function(){ window.location.href = "admin.html"; };
+            }
+            resolve(true);
+          } else {
+            resolve(false);
+          }
+        }).catch(function(err){
+          settled = true;
+          console.warn("Admin check failed:", err);
+          resolve(false);
+        });
+      }
+      var currentUser = firebase.auth().currentUser;
+      if (currentUser) checkUser(currentUser);
+      else {
+        var unsubscribe = firebase.auth().onAuthStateChanged(function(user){
+          unsubscribe();
+          checkUser(user);
+        });
+      }
+    });
+  }
+
   /* ============ DATABASE ============ */
   var SCHEMA = {
     customers: { pk:"customer_id", fks:[], cols:[["customer_id","INT"],["name","STRING"],["city","STRING"],["segment","STRING"],["signup_date","DATE"]] },
@@ -707,94 +982,132 @@
     order_items:{ pk:"order_item_id", fks:["order_id","product_id"], cols:[["order_item_id","INT"],["order_id","INT"],["product_id","INT"],["quantity","INT"]] }
   };
 
-  function buildDatabase(){
-    // Rebuild a clean in-browser AlaSQL database before every query/example.
-    // Rows are inserted one at a time with explicit parameters. This avoids
-    // the VALUES ? form behaving inconsistently across AlaSQL/browser builds.
-    alasql("DROP TABLE IF EXISTS customers");
-    alasql("DROP TABLE IF EXISTS products");
-    alasql("DROP TABLE IF EXISTS orders");
-    alasql("DROP TABLE IF EXISTS order_items");
+  function safeIdentifier(name){
+    return /^[A-Za-z_][A-Za-z0-9_]*$/.test(String(name || ""));
+  }
 
-    alasql("CREATE TABLE customers (customer_id INT, name STRING, city STRING, segment STRING, signup_date STRING)");
-    alasql("CREATE TABLE products (product_id INT, name STRING, category STRING, price NUMBER)");
-    alasql("CREATE TABLE orders (order_id INT, customer_id INT, order_date STRING, status STRING)");
-    alasql("CREATE TABLE order_items (order_item_id INT, order_id INT, product_id INT, quantity INT)");
+  function requiredTableSet(q){
+    var set = {};
+    (q && Array.isArray(q.tables) ? q.tables : []).forEach(function(name){
+      if (safeIdentifier(name)) set[name] = true;
+    });
+    return set;
+  }
 
-    var customers = [
-      [1,'Ravi Sen','Kolkata','Retail','2022-01-14'],
-      [2,'Meera Iyer','Bengaluru','Retail','2022-02-03'],
-      [3,'Arjun Nair','Kolkata','Wholesale','2021-11-20'],
-      [4,'Priya Das','Mumbai','Retail','2023-03-11'],
-      [5,'Karan Mehta','Delhi','Wholesale','2022-07-08'],
-      [6,'Sara Khan','Mumbai','Retail','2023-01-25'],
-      [7,'Vikram Rao','Chennai','Wholesale','2021-09-02'],
-      [8,'Anita Roy','Kolkata','Retail','2022-12-19'],
-      [9,'Divya Pillai','Bengaluru','Retail','2023-05-30'],
-      [10,'Rohan Gupta','Delhi','Wholesale','2022-04-17'],
-      [11,'Neha Kapoor','Pune','Retail','2023-07-01']
-    ];
+  function getTableDefinition(tableName){
+    return SCHEMA[tableName] || FIRESTORE_TABLES[tableName] || null;
+  }
 
-    var products = [
-      [1,'Wireless Mouse','Electronics',799],
-      [2,'Mechanical Keyboard','Electronics',3499],
-      [3,'USB-C Hub','Electronics',1299],
-      [4,'Notebook Set','Stationery',249],
-      [5,'Gel Pen Pack','Stationery',99],
-      [6,'Desk Lamp','Home',1599],
-      [7,'Office Chair','Home',6999],
-      [8,'Water Bottle','Home',449],
-      [9,'Backpack','Accessories',1899],
-      [10,'Wireless Earbuds','Electronics',2299],
-      [11,'Sticky Notes','Stationery',79],
-      [12,'Monitor Stand','Home',899],
-      [13,'Desk Organizer','Home',349]
-    ];
+  async function createDynamicTable(tableName, tableDef){
+    if (!tableDef || !safeIdentifier(tableName)) return;
+    var cols = tableDef.cols || [];
+    if (!cols.length) throw new Error("Table '" + tableName + "' has no columns.");
 
-    var orders = [
-      [1,1,'2023-06-01','Delivered'],
-      [2,2,'2023-06-02','Delivered'],
-      [3,1,'2023-06-05','Delivered'],
-      [4,3,'2023-06-06','Pending'],
-      [5,4,'2023-06-07','Delivered'],
-      [6,5,'2023-06-08','Cancelled'],
-      [7,2,'2023-06-10','Delivered'],
-      [8,6,'2023-06-11','Delivered'],
-      [9,7,'2023-06-12','Pending'],
-      [10,8,'2023-06-13','Delivered'],
-      [11,3,'2023-06-15','Delivered'],
-      [12,9,'2023-06-16','Delivered'],
-      [13,10,'2023-06-17','Cancelled'],
-      [14,1,'2023-06-19','Delivered'],
-      [15,4,'2023-06-20','Pending'],
-      [16,6,'2023-06-21','Delivered'],
-      [17,5,'2023-06-22','Delivered'],
-      [18,8,'2023-06-24','Delivered'],
-      [19,2,'2023-06-25','Pending'],
-      [20,9,'2023-06-27','Delivered']
-    ];
+    var colSql = cols.map(function(c){
+      var name = c[0], type = duckType(c[1]);
+      if (!safeIdentifier(name)) throw new Error("Invalid column name in table '" + tableName + "'.");
+      return name + " " + type;
+    }).join(", ");
 
-    var orderItems = [
-      [1,1,1,2],[2,1,4,1],[3,2,2,1],[4,3,5,3],[5,4,7,1],
-      [6,5,3,1],[7,5,6,2],[8,6,9,1],[9,7,10,1],[10,7,11,5],
-      [11,8,1,1],[12,9,7,1],[13,10,2,1],[14,10,8,2],[15,11,4,2],
-      [16,11,5,4],[17,12,12,1],[18,13,9,1],[19,14,3,2],[20,14,10,1],
-      [21,15,7,1],[22,16,1,3],[23,16,6,1],[24,17,8,3],[25,17,10,1],
-      [26,18,2,1],[27,18,4,1],[28,19,6,1],[29,20,12,2],[30,20,9,1]
-    ];
+    await dbExec("CREATE TABLE " + tableName + " (" + colSql + ")");
 
-    function insertRows(tableName, columnCount, rows){
-      var placeholders = Array(columnCount).fill("?").join(", ");
-      var statement = "INSERT INTO " + tableName + " VALUES (" + placeholders + ")";
-      rows.forEach(function(row){
-        alasql(statement, row);
-      });
+    if (Array.isArray(tableDef.rows) && tableDef.rows.length){
+      var valuesSql = tableDef.rows.map(function(row){
+        var values = Array.isArray(row) ? row : cols.map(function(c){ return row[c[0]]; });
+        while (values.length < cols.length) values.push(null);
+        return "(" + values.slice(0, cols.length).map(sqlLiteral).join(", ") + ")";
+      }).join(", ");
+      await dbExec("INSERT INTO " + tableName + " VALUES " + valuesSql);
+    }
+  }
+
+  async function buildDatabase(q){
+    q = q || QUESTIONS[current];
+    var required = requiredTableSet(q);
+
+    // Each question gets an isolated in-memory DuckDB database.
+    var knownTables = Object.keys(SCHEMA).concat(Object.keys(FIRESTORE_TABLES));
+    var uniqueTables = knownTables.filter(function(v,i,a){ return a.indexOf(v) === i; });
+
+    await initDuckDB();
+    for (var i=0; i<uniqueTables.length; i++){
+      var tableName = uniqueTables[i];
+      if (safeIdentifier(tableName)){
+        try { await dbExec("DROP TABLE IF EXISTS " + tableName); } catch(e){}
+      }
     }
 
-    insertRows("customers", 5, customers);
-    insertRows("products", 4, products);
-    insertRows("orders", 4, orders);
-    insertRows("order_items", 4, orderItems);
+    // Base tables are created only when the current question uses them.
+    if (required.customers){
+      await dbExec("CREATE TABLE customers (customer_id INTEGER, name VARCHAR, city VARCHAR, segment VARCHAR, signup_date DATE)");
+      var customers = [
+        [1,'Ravi Sen','Kolkata','Retail','2022-01-14'],
+        [2,'Meera Iyer','Bengaluru','Retail','2022-02-03'],
+        [3,'Arjun Nair','Kolkata','Wholesale','2021-11-20'],
+        [4,'Priya Das','Mumbai','Retail','2023-03-11'],
+        [5,'Karan Mehta','Delhi','Wholesale','2022-07-08'],
+        [6,'Sara Khan','Mumbai','Retail','2023-01-25'],
+        [7,'Vikram Rao','Chennai','Wholesale','2021-09-02'],
+        [8,'Anita Roy','Kolkata','Retail','2022-12-19'],
+        [9,'Divya Pillai','Bengaluru','Retail','2023-05-30'],
+        [10,'Rohan Gupta','Delhi','Wholesale','2022-04-17'],
+        [11,'Neha Kapoor','Pune','Retail','2023-07-01']
+      ];
+      await dbExec("INSERT INTO customers VALUES " + customers.map(function(r){return "(" + r.map(sqlLiteral).join(",") + ")";}).join(","));
+    }
+
+    if (required.products){
+      await dbExec("CREATE TABLE products (product_id INTEGER, name VARCHAR, category VARCHAR, price DOUBLE)");
+      var products = [
+        [1,'Wireless Mouse','Electronics',799],[2,'Mechanical Keyboard','Electronics',3499],
+        [3,'USB-C Hub','Electronics',1299],[4,'Notebook Set','Stationery',249],
+        [5,'Gel Pen Pack','Stationery',99],[6,'Desk Lamp','Home',1599],
+        [7,'Office Chair','Home',6999],[8,'Water Bottle','Home',449],
+        [9,'Backpack','Accessories',1899],[10,'Wireless Earbuds','Electronics',2299],
+        [11,'Sticky Notes','Stationery',79],[12,'Monitor Stand','Home',899],[13,'Desk Organizer','Home',349]
+      ];
+      await dbExec("INSERT INTO products VALUES " + products.map(function(r){return "(" + r.map(sqlLiteral).join(",") + ")";}).join(","));
+    }
+
+    if (required.orders){
+      await dbExec("CREATE TABLE orders (order_id INTEGER, customer_id INTEGER, order_date DATE, status VARCHAR)");
+      var orders = [
+        [1,1,'2023-06-01','Delivered'],[2,2,'2023-06-02','Delivered'],
+        [3,1,'2023-06-05','Delivered'],[4,3,'2023-06-06','Pending'],
+        [5,4,'2023-06-07','Delivered'],[6,5,'2023-06-08','Cancelled'],
+        [7,2,'2023-06-10','Delivered'],[8,6,'2023-06-11','Delivered'],
+        [9,7,'2023-06-12','Pending'],[10,8,'2023-06-13','Delivered'],
+        [11,3,'2023-06-15','Delivered'],[12,9,'2023-06-16','Delivered'],
+        [13,10,'2023-06-17','Cancelled'],[14,1,'2023-06-19','Delivered'],
+        [15,4,'2023-06-20','Pending'],[16,6,'2023-06-21','Delivered'],
+        [17,5,'2023-06-22','Delivered'],[18,8,'2023-06-24','Delivered'],
+        [19,2,'2023-06-25','Pending'],[20,9,'2023-06-27','Delivered']
+      ];
+      await dbExec("INSERT INTO orders VALUES " + orders.map(function(r){return "(" + r.map(sqlLiteral).join(",") + ")";}).join(","));
+    }
+
+    if (required.order_items){
+      await dbExec("CREATE TABLE order_items (order_item_id INTEGER, order_id INTEGER, product_id INTEGER, quantity INTEGER)");
+      var orderItems = [
+        [1,1,1,2],[2,1,4,1],[3,2,2,1],[4,3,5,3],[5,4,7,1],
+        [6,5,3,1],[7,5,6,2],[8,6,9,1],[9,7,10,1],[10,7,11,5],
+        [11,8,1,1],[12,9,7,1],[13,10,2,1],[14,10,8,2],[15,11,4,2],
+        [16,11,5,4],[17,12,12,1],[18,13,9,1],[19,14,3,2],[20,14,10,1],
+        [21,15,7,1],[22,16,1,3],[23,16,6,1],[24,17,8,3],[25,17,10,1],
+        [26,18,2,1],[27,18,4,1],[28,19,6,1],[29,20,12,2],[30,20,9,1]
+      ];
+      await dbExec("INSERT INTO order_items VALUES " + orderItems.map(function(r){return "(" + r.map(sqlLiteral).join(",") + ")";}).join(","));
+    }
+
+    // Firestore-created tables are loaded only when the current question uses them.
+    var names = Object.keys(required);
+    for (var j=0; j<names.length; j++){
+      var dynamicName = names[j];
+      if (SCHEMA[dynamicName]) continue;
+      var def = FIRESTORE_TABLES[dynamicName];
+      if (!def) throw new Error("Table '" + dynamicName + "' was not found in Firestore.");
+      await createDynamicTable(dynamicName, def);
+    }
   }
 
   /* ============ QUESTIONS ============ */
@@ -915,7 +1228,12 @@
   var INTERVIEW_QUESTIONS = [
   ];
   INTERVIEW_QUESTIONS.forEach(function(q){ q.topic = "Interview questions"; QUESTIONS.push(q); });
-  QUESTIONS = QUESTIONS.concat(QUERY_BENCH_QUESTION_BANK);
+
+  // The external question-bank file is optional. Never let a missing or
+  // unloaded bank prevent the built-in 17 questions from rendering.
+  if (Array.isArray(window.QUERY_BENCH_QUESTION_BANK)) {
+    QUESTIONS = QUESTIONS.concat(window.QUERY_BENCH_QUESTION_BANK);
+  }
 
   var TOPIC_ORDER = [];
   QUESTIONS.forEach(function(q, i){
@@ -924,12 +1242,19 @@
   });
 
   var expectedCache = {};
-  function getExpected(q){
+  async function getExpected(q){
     if (expectedCache[q.id]) return expectedCache[q.id];
-    buildDatabase();
-    var rows = alasql(q.solution);
-    expectedCache[q.id] = rows;
-    return rows;
+    await buildDatabase(q);
+
+    var manual = Array.isArray(q.expectedOutput) ? q.expectedOutput : parseExpectedOutput(q.expectedOutput);
+    if (manual !== null && manual !== undefined){
+      expectedCache[q.id] = manual;
+      return manual;
+    }
+
+    var rows = q.solution ? await dbQuery(q.solution) : [];
+    expectedCache[q.id] = Array.isArray(rows) ? rows : [];
+    return expectedCache[q.id];
   }
 
   /* ============ STATE / PROGRESS ============ */
@@ -949,21 +1274,48 @@
   var collapsedTopics = {};
 
   /* ============ RESULT COMPARISON ============ */
+  function normalizeValue(v){
+    if (v === null || v === undefined) return "null";
+    if (typeof v === "bigint") return "number:" + String(v);
+    if (typeof v === "number") {
+      if (!Number.isFinite(v)) return "number:" + String(v);
+      return "number:" + (Math.round(v * 1000000) / 1000000).toString();
+    }
+    if (typeof v === "string") {
+      var t = v.trim();
+      if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(t)) {
+        var n = Number(t);
+        if (Number.isFinite(n)) return "number:" + (Math.round(n * 1000000) / 1000000).toString();
+      }
+      return "string:" + v;
+    }
+    if (typeof v === "boolean") return "boolean:" + (v ? "true" : "false");
+    if (v instanceof Date) return "date:" + v.toISOString();
+    return "string:" + String(v);
+  }
+
+  function rowCells(row){
+    if (!row || typeof row !== "object") return [normalizeValue(row)];
+    return Object.keys(row).sort().map(function(k){ return normalizeValue(row[k]); });
+  }
+
   function normRow(row){
-    var vals = Object.keys(row).map(function(k){ return row[k]; });
-    return vals.map(function(v){
-      if (typeof v === "number") return "n:" + (Math.round(v * 10000) / 10000);
-      if (v === null || v === undefined) return "u:null";
-      return "s:" + String(v);
-    }).join(" | ");
+    return rowCells(row).sort().join("|");
   }
 
   function resultsMatch(a, b){
     if (!Array.isArray(a) || !Array.isArray(b)) return false;
     if (a.length !== b.length) return false;
+
+    // Compare the actual result values, not the reference SQL and not
+    // JavaScript's BigInt/Number type. Column aliases/case do not affect
+    // correctness; duplicate rows and row count still do.
     var na = a.map(normRow).sort();
     var nb = b.map(normRow).sort();
-    for (var i=0;i<na.length;i++) if (na[i] !== nb[i]) return false;
+
+    for (var i = 0; i < na.length; i++) {
+      if (na[i] !== nb[i]) return false;
+    }
     return true;
   }
 
@@ -1015,47 +1367,60 @@
       sidebarEl.appendChild(group);
     });
 
-    if (INTERVIEW_QUESTIONS.length === 0){
-      var placeholder = document.createElement("div");
-      placeholder.className = "topic-group";
-      placeholder.innerHTML =
-        '<div class="topic-header" style="cursor:default;"><span>Interview questions</span></div>' +
-        '<div style="padding:0 8px 12px 8px;color:var(--text-faint);font-size:12px;font-family:var(--font-code);line-height:1.5;">Coming soon — hand-picked problems will show up here.</div>';
-      sidebarEl.appendChild(placeholder);
-    }
   }
 
   /* ============ RENDER: SCHEMA PANEL ============ */
   var schemaBody = document.getElementById("schema-body");
-  var schemaBuilt = false;
 
-  function buildSchemaPanel(){
-    if (schemaBuilt) return;
-    schemaBuilt = true;
-    Object.keys(SCHEMA).forEach(function(tableName){
-      var t = SCHEMA[tableName];
+  function getQuestionTables(q){
+    return Array.isArray(q.tables) ? q.tables.filter(safeIdentifier) : [];
+  }
+
+  function buildSchemaPanel(q){
+    schemaBody.innerHTML = "";
+    var names = getQuestionTables(q);
+
+    if (!names.length){
+      schemaBody.innerHTML = '<div class="empty-note">No input tables configured for this question.</div>';
+      return;
+    }
+
+    names.forEach(function(tableName){
+      var t = getTableDefinition(tableName);
+      if (!t){
+        var missing = document.createElement("div");
+        missing.className = "empty-note";
+        missing.textContent = "Table '" + tableName + "' is not available.";
+        schemaBody.appendChild(missing);
+        return;
+      }
+
       var card = document.createElement("div");
       card.className = "table-card";
 
-      var colsHtml = t.cols.map(function(c){
+      var colsHtml = (t.cols || []).map(function(c){
         var cls = "col-name";
         if (c[0] === t.pk) cls += " key";
-        else if (t.fks.indexOf(c[0]) !== -1) cls += " fkey";
-        return '<div><span class="' + cls + '">' + c[0] + '</span><span class="col-type">' + c[1] + '</span></div>';
+        else if ((t.fks || []).indexOf(c[0]) !== -1) cls += " fkey";
+        return '<div><span class="' + cls + '">' + escapeHtml(c[0]) + '</span><span class="col-type">' + escapeHtml(c[1]) + '</span></div>';
       }).join("");
 
       card.innerHTML =
-        '<div class="table-card-head"><span>' + tableName + '</span><span style="color:var(--text-faint);font-weight:400;">preview</span></div>' +
+        '<div class="table-card-head"><span>' + escapeHtml(tableName) + '</span><span style="color:var(--text-faint);font-weight:400;">preview</span></div>' +
         '<div class="table-cols">' + colsHtml + '</div>' +
         '<div class="sample-wrap" style="display:none;"></div>';
 
       var headEl = card.querySelector(".table-card-head");
       var sampleWrap = card.querySelector(".sample-wrap");
-      headEl.addEventListener("click", function(){
+      headEl.addEventListener("click", async function(){
         if (sampleWrap.style.display === "none"){
-          buildDatabase();
-          var rows = alasql("SELECT * FROM " + tableName + " LIMIT 5");
-          sampleWrap.innerHTML = renderTableHTML(rows, 5);
+          try {
+            await buildDatabase(q);
+            var rows = await dbQuery("SELECT * FROM " + tableName + " LIMIT 5");
+            sampleWrap.innerHTML = renderTableHTML(rows, 5);
+          } catch(err){
+            sampleWrap.innerHTML = '<div class="empty-note">' + escapeHtml(err.message || String(err)) + '</div>';
+          }
           sampleWrap.style.display = "block";
         } else {
           sampleWrap.style.display = "none";
@@ -1092,29 +1457,44 @@
     return html;
   }
 
-  function renderExample(q){
-    buildDatabase();
+  async function renderExample(q){
     var inputWrap = document.getElementById("example-input-tables");
     inputWrap.innerHTML = "";
-    (q.tables || []).forEach(function(tableName){
-      var rows = alasql("SELECT * FROM " + tableName);
-      var block = document.createElement("div");
-      block.className = "input-table-block";
-      block.innerHTML =
-        '<div class="input-table-name">' + tableName + '</div>' +
-        '<div class="results-scroll">' + renderTableHTML(rows) + '</div>';
-      inputWrap.appendChild(block);
-    });
 
-    var expected = getExpected(q);
+    try {
+      await buildDatabase(q);
+      for (var tableIndex = 0; tableIndex < (q.tables || []).length; tableIndex++){
+        var tableName = q.tables[tableIndex];
+        if (!safeIdentifier(tableName)) continue;
+        var rows = await dbQuery("SELECT * FROM " + tableName);
+        var block = document.createElement("div");
+        block.className = "input-table-block";
+        block.innerHTML =
+          '<div class="input-table-name">' + escapeHtml(tableName) + '</div>' +
+          '<div class="results-scroll">' + renderTableHTML(rows) + '</div>';
+        inputWrap.appendChild(block);
+      }
+    } catch(err){
+      inputWrap.innerHTML = '<div class="empty-note">' + escapeHtml(err.message || String(err)) + '</div>';
+    }
+
+    var expected = await getExpected(q);
     document.getElementById("example-output-table").innerHTML =
-      '<div class="results-scroll">' + renderTableHTML(expected) + '</div>';
+      expected && expected.length
+        ? '<div class="results-scroll">' + renderTableHTML(expected) + '</div>'
+        : '<div class="empty-note">No expected output configured.</div>';
   }
 
+
   document.getElementById("toggle-schema").addEventListener("click", function(){
-    buildSchemaPanel();
-    var open = schemaBody.classList.toggle("open");
-    this.textContent = open ? "hide tables" : "show tables";
+    if (!schemaBody.classList.contains("open")){
+      buildSchemaPanel(QUESTIONS[current]);
+      schemaBody.classList.add("open");
+      this.textContent = "hide tables";
+    } else {
+      schemaBody.classList.remove("open");
+      this.textContent = "show tables";
+    }
   });
 
   /* ============ RENDER: QUESTION ============ */
@@ -1185,12 +1565,12 @@
   function goTo(id){
     draftBySlot[current] = getSqlValue();
     current = id;
-    renderQuestion();
+    renderQuestion().catch(function(err){ console.error(err); });
     renderSidebar();
     window.scrollTo({top:0, behavior:"smooth"});
   }
 
-  function renderQuestion(){
+  async function renderQuestion(){
     var q = QUESTIONS[current];
     els.badgeTopic.textContent = q.topic;
     els.badgeDiff.textContent = q.difficulty;
@@ -1198,7 +1578,10 @@
     els.counter.textContent = "Question " + (current+1) + " of " + QUESTIONS.length;
     els.title.textContent = q.title;
     els.prompt.textContent = q.prompt;
-    renderExample(q);
+    schemaBody.classList.remove("open");
+    document.getElementById("toggle-schema").textContent = "show tables";
+    buildSchemaPanel(q);
+    await renderExample(q);
 
     setSqlValue(draftBySlot[current] !== undefined ? draftBySlot[current] : "");
     els.hintBox.textContent = q.hint;
@@ -1206,7 +1589,7 @@
     document.getElementById("toggle-hint").textContent = "hint";
 
     els.solutionBox.innerHTML = "<div style=\"color:var(--text-dim);font-size:12.5px;\">Reference solution — one valid way to answer this:</div><pre></pre>";
-    els.solutionBox.querySelector("pre").textContent = q.solution + ";";
+    els.solutionBox.querySelector("pre").textContent = String(q.solution || "").replace(/;\s*$/, "") + ";";
     els.solutionBox.classList.remove("open");
     document.getElementById("solution-btn").textContent = "Show solution";
 
@@ -1226,7 +1609,7 @@
   }
 
   /* ============ RUN QUERY ============ */
-  function runQuery(){
+  async function runQuery(){
     var q = QUESTIONS[current];
     var userSql = getSqlValue().trim();
     els.feedback.classList.remove("open","ok","err");
@@ -1238,10 +1621,10 @@
       return;
     }
 
-    buildDatabase();
     var rows;
     try {
-      rows = alasql(userSql);
+      await buildDatabase(q);
+      rows = await dbQuery(userSql);
     } catch(err){
       var rawError = err && err.message ? err.message : String(err);
       var friendlyError = rawError
@@ -1269,7 +1652,7 @@
     var resultMeta = document.getElementById("result-meta");
     if (resultMeta){ resultMeta.textContent = "Success · " + rows.length + " row" + (rows.length===1?"":"s"); resultMeta.className = "result-status ok"; }
 
-    var expected = getExpected(q);
+    var expected = await getExpected(q);
     var isCorrect = resultsMatch(rows, expected);
 
     els.feedback.classList.add("open", isCorrect ? "ok" : "err");
@@ -1350,27 +1733,47 @@
   } catch(e){}
 
   /* ============ INIT ============ */
-  buildDatabase();
-  initializeQueryBenchDatabase();
+  (async function(){
+    document.getElementById("db-status").textContent = "starting DuckDB-WASM…";
+    els.scoreTotal.textContent = QUESTIONS.length;
+    document.getElementById("footer-count").textContent = QUESTIONS.length;
+    updateScore();
+    renderSidebar();
+    initSqlEditor();
 
-  els.scoreTotal.textContent = QUESTIONS.length;
-  document.getElementById("footer-count").textContent = QUESTIONS.length;
-  try {
-    var dbCounts = [
-      alasql("SELECT COUNT(*) AS n FROM customers")[0].n,
-      alasql("SELECT COUNT(*) AS n FROM products")[0].n,
-      alasql("SELECT COUNT(*) AS n FROM orders")[0].n,
-      alasql("SELECT COUNT(*) AS n FROM order_items")[0].n
-    ];
-    document.getElementById("db-status").textContent =
-      "database ready · " + dbCounts.join(" / ") + " rows";
-  } catch(e) {
-    document.getElementById("db-status").textContent = "database error";
-  }
-  updateScore();
-  renderSidebar();
-  initSqlEditor();
-  renderQuestion();
+    try {
+      await initDuckDB();
+      await buildDatabase(QUESTIONS[0]);
+      var countParts = [];
+      var firstTables = QUESTIONS[0].tables || [];
+      for (var ci = 0; ci < firstTables.length; ci++){
+        var name = firstTables[ci];
+        if (safeIdentifier(name)){
+          var countRows = await dbQuery("SELECT COUNT(*) AS n FROM " + name);
+          if (countRows.length) countParts.push(countRows[0].n);
+        }
+      }
+      document.getElementById("db-status").textContent =
+        "DuckDB ready" + (countParts.length ? " · " + countParts.join(" / ") + " rows" : "");
+      await renderQuestion();
+
+      // Firestore loads after the local practice UI is ready.
+      await checkAdminAccess();
+      await loadFirestoreTables();
+      await loadFirestoreQuestions();
+      if (QUESTIONS.length){
+        if (current >= QUESTIONS.length) current = QUESTIONS.length - 1;
+        await renderQuestion();
+        updateScore();
+      }
+    } catch(err){
+      console.error("Query Bench initialization failed:", err);
+      document.getElementById("db-status").textContent = "database error";
+      document.getElementById("results-target").innerHTML =
+        '<div class="sql-error"><div class="sql-error-head"><span>✕</span><span>Database initialization error</span></div>' +
+        '<div class="sql-error-body">' + escapeHtml(err && err.message ? err.message : String(err)) + '</div></div>';
+    }
+  })();
 })();
 </script>
 </body>
